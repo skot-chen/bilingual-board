@@ -101,6 +101,8 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .field .place{display:flex;gap:6px;flex-wrap:wrap}.field .place select,.field .place input{min-width:0;flex:1 1 140px}
 .eng-item.off{opacity:.55}.eng-need{display:block;color:#b45309}.eng-get{display:block;padding:8px 10px;font-size:.85em;text-decoration:none;border-top:1px solid rgba(127,127,127,.25)}
 @media (max-width:600px){.row:has(> #checkBtn){flex-wrap:wrap;row-gap:6px}}
+[hidden]{display:none!important}
+.sync-btns{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}#syncHow{margin:4px 0 8px}#syncHow small{line-height:1.7}
 .phrases{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px}
 .phrases button{flex:none;font-size:.8em;text-align:left;line-height:1.25}
 .phrases button small{display:block;color:var(--muted)}
@@ -250,6 +252,18 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
   <div class="field"><small id="engineStatus" style="color:var(--muted)"></small></div>
   <div class="field"><label for="sRate">Speech speed 朗读语速</label><input type="range" id="sRate" min="0.5" max="1.3" step="0.05"></div>
   <div class="field"><label for="sScale">Text size 字号</label><input type="range" id="sScale" min="0.85" max="1.6" step="0.05"></div>
+  <fieldset class="ai-box" id="syncBox"><legend>☁ Sync 同步 · GitHub</legend>
+    <div class="field"><small>Save the chats to your own <b>private</b> GitHub repository, so every device shows the same chats.<br>把聊天记录存到你自己的<b>私有</b> GitHub 仓库，手机、电脑打开都能看到同样的聊天。</small></div>
+    <div class="field"><label for="sRepo">Repository 仓库<br><small>owner/name，必须是私有仓库</small></label><input type="text" id="sRepo" placeholder="you/bilingual-board-data" autocomplete="off" spellcheck="false"></div>
+    <div class="field" id="syncKeyRow"><label for="sToken">GitHub key 钥匙<br><small>只存在这个浏览器里，不会上传</small></label><input type="password" id="sToken" autocomplete="off" placeholder="github_pat_…"></div>
+    <div class="sync-btns"><button type="button" id="syncConnect">🔗 Connect 连接</button><button type="button" id="syncNow">🔄 Sync now 现在同步</button><button type="button" id="syncForget">🔑 Forget key 删掉钥匙</button></div>
+    <div class="field"><small id="syncMsg" aria-live="polite"></small></div>
+    <details id="syncHow"><summary><small>How to get a key 怎么拿钥匙（每台设备做一次）</small></summary><small>
+      ① Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → new fine-grained token 新建钥匙</a><br>
+      ② Repository access → <b>Only select repositories</b> → your data repository 选你的数据仓库<br>
+      ③ Permissions → <b>Contents: Read and write</b><br>
+      ④ Generate, copy, paste above, click Connect. 生成后复制，粘贴到上面，点「连接」。</small></details>
+  </fieldset>
   <div class="dlg-acts">
     <button type="button" id="exportMd">Export chat (.md)</button>
     <button type="button" id="exportJson">Backup all (.json)</button>
@@ -296,10 +310,69 @@ S.settings = renameOld(Object.assign(freshState().settings, S.settings));
 const conv = () => S.conversations.find(c => c.id === S.activeId) || S.conversations[0];
 function markDeleted(id) { (S.deleted ||= []).push(id); }
 
+// ----- ☁ GitHub sync: the whole board in one file (board.json) of the user's own private repo.
+// The key (fine-grained token) and repo name live only in this browser's localStorage, never inside S.
+const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+const lsSet = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} };
+const GH_FILE = 'board.json';
+const GH = { token: lsGet('bb-gh-token'), repo: lsGet('bb-gh-repo') || (location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] + '/bilingual-board-data' : ''),
+  busy: false, again: false, timer: 0, msg: '' };
+const b64e = str => { const b = new TextEncoder().encode(str); let o = ''; for (let i = 0; i < b.length; i += 0x8000) o += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(o); };
+const b64d = str => new TextDecoder().decode(Uint8Array.from(atob(str.replace(/\s/g, '')), c => c.charCodeAt(0)));
+const ghFetch = (path, opt = {}, accept = 'application/vnd.github+json') => fetch('https://api.github.com/repos/' + GH.repo + path,
+  { cache: 'no-store', ...opt, headers: { Authorization: 'Bearer ' + GH.token, Accept: accept, ...(opt.body ? { 'content-type': 'application/json' } : {}) } });
+const ghErr = st => st === 401 ? '✗ Key invalid or expired · 钥匙无效或过期'
+  : st === 403 || st === 404 ? '✗ This key cannot write to ' + GH.repo + ' · 钥匙没有这个仓库的写入权限（Contents: Read and write）'
+  : st === 'public' ? '✗ ' + GH.repo + ' is public — use a PRIVATE repository · 这个仓库是公开的，聊天会被所有人看到，请用私有仓库'
+  : '✗ Sync failed, will try again · 同步失败，稍后再试 ' + (st || '');
+function syncMsg(t) { GH.msg = t; const el = $('#syncMsg'); if (el) el.textContent = t; }
+async function ghSync() {
+  if (!GH.token || !GH.repo) return;
+  if (GH.busy) { GH.again = true; return; }
+  GH.busy = true; clearTimeout(GH.timer); syncMsg('⏳ Syncing… 正在同步');
+  try {
+    for (let attempt = 0; ; attempt++) {
+      let sha, remote = null;
+      const r = await ghFetch('/contents/' + GH_FILE);
+      if (r.ok) {
+        const j = await r.json(); sha = j.sha;
+        const txt = j.content ? b64d(j.content) : await (await ghFetch('/contents/' + GH_FILE, {}, 'application/vnd.github.raw')).text(); // big files come without content
+        remote = JSON.parse(txt);
+      } else if (r.status !== 404) throw r.status;
+      if (remote && Array.isArray(remote.conversations)) {
+        const before = JSON.stringify(S.conversations) + S.activeId;
+        S = mergeBoard(S, remote); S.settings = renameOld(Object.assign(freshState().settings, S.settings));
+        lsSet(KEY, JSON.stringify(S));
+        if (JSON.stringify(S.conversations) + S.activeId !== before) { renderAll(); if (!WEB) pushServer(); }
+      }
+      const out = JSON.stringify(S);
+      if (remote && JSON.stringify(remote) === out) break; // nothing new to upload
+      const put = await ghFetch('/contents/' + GH_FILE, { method: 'PUT', body: JSON.stringify({ message: 'Update chats', content: b64e(out), ...(sha ? { sha } : {}) }) });
+      if (put.ok) break;
+      if ((put.status === 409 || put.status === 422) && attempt < 2) continue; // another device saved meanwhile: merge again
+      throw put.status;
+    }
+    const t = new Date().toTimeString().slice(0, 5);
+    syncMsg('✓ Synced 已同步 ' + t); setSaveState('☁ Synced 已同步 ' + t);
+  } catch (e) { syncMsg(ghErr(typeof e === 'number' ? e : 0)); setSaveState('⚠ Sync failed 同步失败'); }
+  GH.busy = false;
+  if (GH.again) { GH.again = false; ghSync(); }
+}
+function ghSoon() { if (!GH.token) return; clearTimeout(GH.timer); GH.timer = setTimeout(ghSync, 3000); }
+// pick up messages written on another device
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ghSync(); });
+setInterval(() => { if (document.visibilityState === 'visible') ghSync(); }, 60000);
+function renderSyncBox() {
+  const on = !!GH.token;
+  $('#sRepo').value = GH.repo; $('#sRepo').disabled = on; $('#sToken').value = '';
+  $('#syncKeyRow').hidden = on; $('#syncConnect').hidden = on; $('#syncNow').hidden = !on; $('#syncForget').hidden = !on; $('#syncHow').hidden = on;
+  syncMsg(GH.msg || (on ? '✓ Connected 已连接 ' + GH.repo : 'Not connected — chats stay on this device. 未连接：聊天只存在这台设备。'));
+}
+
 let serverOK = false, serverEverOK = false, saveTimer;
 function save() {
-  if (WEB) { localStorage.setItem(KEY, JSON.stringify(S)); setSaveState('Saved in this browser 存在本浏览器'); return; }
-  S.updatedAt = Date.now();
+  S.updatedAt = Date.now(); ghSoon();
+  if (WEB) { localStorage.setItem(KEY, JSON.stringify(S)); setSaveState(GH.token ? '☁ Saving… 同步中' : 'Saved in this browser 存在本浏览器'); return; }
   localStorage.setItem(KEY, JSON.stringify(S));
   clearTimeout(saveTimer);
   saveTimer = setTimeout(pushServer, 600);
@@ -314,7 +387,7 @@ async function pushServer() {
 function setSaveState(t) {
   const el = $('#saveState'); el.textContent = t;
   el.title = t.startsWith('⚠') ? 'Not saved to the data folder. Start the board with start.bat (Windows) or start.command (Mac) — it will sync automatically.\n没有存到 data 文件夹。双击 start.bat（Windows）或 start.command（Mac）启动后会自动同步。' : '';
-  if (WEB) el.title = 'Web version: chats are saved only in this browser on this device. Use 💾 backup to move them.\n网页版：聊天记录只存在这台设备的这个浏览器里，换设备请用备份导出/导入。';
+  if (WEB) el.title = 'Web version: chats are saved only in this browser on this device. Connect ☁ Sync in ⚙️ Settings to see them on every device.\n网页版：聊天记录存在这个浏览器里；在 ⚙️ 设置里连接 ☁ 同步，换设备也能看到。';
   el.style.color = t.startsWith('⚠') ? '#dc2626' : '';
 }
 // If the server was stopped, keep trying to reconnect; once back, newer browser data is pushed to data/.
@@ -1000,7 +1073,7 @@ $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
 $('#settingsBtn').onclick = () => {
   const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillPlaceMenus(); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
   $('#sGEngine').value = gEng(); $('#sGEngine').disabled = WEB; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
-  $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); $('#settingsDlg').showModal();
+  $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); renderSyncBox(); $('#settingsDlg').showModal();
 };
 $('#settingsDlg').addEventListener('input', () => {
   const s = S.settings; s.nameA = $('#sNameA').value.trim() || 'S'; s.nameB = $('#sNameB').value.trim() || 'A'; for (const k of ['A', 'B']) {
@@ -1010,6 +1083,25 @@ $('#settingsDlg').addEventListener('input', () => {
   s.hideZh = $('#sHide').checked;
   s.autoSwitch = $('#sSwitch').checked; s.autoGrammar = $('#sGrammar').checked; if (!WEB) s.gEngine = $('#sGEngine').value; s.aiModel = $('#sModel').value; s.engine = $('#sEngine').value; s.rate = +$('#sRate').value; s.scale = +$('#sScale').value; save(); renderAll();
 });
+$('#syncConnect').onclick = async () => {
+  const repo = $('#sRepo').value.trim().replace(/^https:\/\/github\.com\//, '').replace(/\.git$|\/$/g, ''), token = $('#sToken').value.trim();
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return syncMsg('✗ Repository looks like owner/name · 仓库格式是 用户名/仓库名');
+  if (!token) return syncMsg('✗ Paste the key first · 先粘贴钥匙');
+  GH.repo = repo; GH.token = token; syncMsg('⏳ Checking the key… 正在检查钥匙');
+  try {
+    const r = await ghFetch(''); if (!r.ok) throw r.status;
+    const j = await r.json();
+    if (!j.private) throw 'public';
+    if (!j.permissions || !j.permissions.push) throw 403;
+    lsSet('bb-gh-repo', repo); lsSet('bb-gh-token', token); GH.msg = ''; renderSyncBox(); ghSync();
+  } catch (e) { GH.token = ''; syncMsg(ghErr(e)); }
+};
+$('#syncNow').onclick = () => ghSync();
+$('#syncForget').onclick = () => {
+  if (!confirm('Forget the GitHub key on this device? Chats are not deleted.\n在这个浏览器里删掉钥匙？聊天记录不会被删除。')) return;
+  GH.token = ''; GH.msg = ''; lsSet('bb-gh-token', ''); renderSyncBox(); if (WEB) setSaveState('Saved in this browser 存在本浏览器');
+};
+if (GH.token) setTimeout(ghSync, 500);
 speechSynthesis?.addEventListener?.('voiceschanged', () => {});
 
 const pending = new Set();

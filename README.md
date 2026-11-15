@@ -72,6 +72,18 @@ Every correction shows which checker made it. · 每条批改都会标明是哪�
 
 聊天记录在 `data/` 文件夹，模型在 `llm/` 文件夹，这两个都不会上传到 GitHub。
 
+### ☁ Sync between devices · 多设备同步 (optional)
+
+To see the same chats on your phone and computer (web or desktop version), sync them to your own **private** GitHub repository:
+
+1. Create a private repository, for example `bilingual-board-data`.
+2. Make a [fine-grained token](https://github.com/settings/personal-access-tokens/new): under Repository access choose **Only select repositories** and pick that repository; under Permissions set **Contents** to **Read and write**.
+3. In ⚙️ Settings → ☁ Sync, enter the repository (`you/bilingual-board-data`) and paste the token. Then click **Connect**. Do this once on each device.
+
+The chats are stored as `board.json` in that repository. The token is kept only in that browser. The board refuses public repositories, so your chats are never published.
+
+想在手机和电脑上看到同样的聊天：建一个**私有**仓库，生成一把只能读写这个仓库的钥匙（fine-grained token，Contents: Read and write），在 ⚙️ 设置 → ☁ 同步 里填仓库名、粘贴钥匙、点连接。每台设备做一次。
+
 ## Files
 
 `server.mjs` is the small local server; it has no dependencies. `index.html` is the whole app. `local.mjs` runs the free model, `claude.mjs` calls Claude, `merge.cjs` merges saved copies safely, and `setup.mjs` downloads the free model.
