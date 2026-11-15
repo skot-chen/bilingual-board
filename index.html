@@ -102,6 +102,7 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .eng-item.off{opacity:.55}.eng-need{display:block;color:#b45309}.eng-get{display:block;padding:8px 10px;font-size:.85em;text-decoration:none;border-top:1px solid rgba(127,127,127,.25)}
 @media (max-width:600px){.row:has(> #checkBtn){flex-wrap:wrap;row-gap:6px}}
 [hidden]{display:none!important}
+.lang-btn{font-size:.8em;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
 .sync-btns{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}#syncHow{margin:4px 0 8px}#syncHow small{line-height:1.7}
 .phrases{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px}
 .phrases button{flex:none;font-size:.8em;text-align:left;line-height:1.25}
@@ -198,6 +199,7 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
       <span class="pill" id="stats"></span>
       <span class="pill" id="saveState">…</span>
       <input class="search" id="search" placeholder="Search 搜索…" aria-label="Search">
+      <button class="lang-btn" id="langBtn" type="button"></button>
       <button class="icon" id="settingsBtn" title="Settings 设置" aria-label="Settings">⚙️</button>
     </header>
     <div id="timeline" aria-live="polite"></div>
@@ -627,7 +629,7 @@ const zoneOK = z => { try { new Intl.DateTimeFormat('en-US', { timeZone: z }); r
 const zoneOff = z => { try { return new Intl.DateTimeFormat('en-US', { timeZone: z, timeZoneName: 'shortOffset' }).formatToParts(new Date()).find(x => x.type === 'timeZoneName').value; } catch { return ''; } };
 const clockOf = (ts, tz) => new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
 const tzOf = sp => { const z = S.settings['tz' + sp]; return z && zoneOK(z) ? z : ''; };
-const placeOf = sp => { const s = S.settings, c = s['ctry' + sp]; return s['city' + sp] || (c ? regionName(c, 'en') + ' ' + regionName(c, 'zh') : ''); };
+const placeOf = sp => { const s = S.settings, c = s['ctry' + sp]; return s['city' + sp] || (c ? regionName(c, 'en') + (lsGet('bb-lang') === 'en' ? '' : ' ' + regionName(c, 'zh')) : ''); };
 const timeLabel = (ts, sp) => clockOf(ts, tzOf(sp)) + (placeOf(sp) ? ' ' + placeOf(sp) : '');
 const timeTip = (ts, sp) => { const o = sp === 'A' ? 'B' : 'A'; return nameOf(o) + (placeOf(o) ? ' (' + placeOf(o) + ')' : '') + ': ' + clockOf(ts, tzOf(o)); };
 let ctryOptions = '';
@@ -663,13 +665,13 @@ const ENGINE_LABEL = { lt: 'LanguageTool · 只查拼写语法', local: '🐱 Qw
 const byTag = m => m.checkedBy ? `<span class="by" title="Checked by 批改引擎">by ${ENGINE_LABEL[m.checkedBy] || m.checkedBy}</span>` : '';
 // The three checkers, with what makes each different (shown in the bottom-right menu)
 const ENGINES = [
-  { id: 'local', icon: '🐱', short: '本地 Qwen', name: 'Qwen3 4B · 本地模型', zh: '免费 · 看聊天场景，改成地道说法，有中文解释', en: 'Free · on this PC · reads the scene · ~20 s' },
-  { id: 'lt', icon: '🔤', short: '拼写检查', name: 'LanguageTool · 拼写检查', zh: '免费 · 只查拼写和基本语法，不懂场景，常改错', en: 'Free · online · spelling & grammar only · fast' },
-  { id: 'claude', icon: '🤖', short: 'Claude', name: 'Claude · 最准', zh: '最准最地道 · 要 API key，每句约 1–2 美分', en: 'Best · paid API key · ~5 s' },
+  { id: 'local', icon: '🐱', short: '本地 Qwen', shortEn: 'Local Qwen', name: 'Qwen3 4B · 本地模型', zh: '免费 · 看聊天场景，改成地道说法，有中文解释', en: 'Free · on this PC · reads the scene · ~20 s' },
+  { id: 'lt', icon: '🔤', short: '拼写检查', shortEn: 'Spell check', name: 'LanguageTool · 拼写检查', zh: '免费 · 只查拼写和基本语法，不懂场景，常改错', en: 'Free · online · spelling & grammar only · fast' },
+  { id: 'claude', icon: '🤖', short: 'Claude', shortEn: 'Claude', name: 'Claude · 最准', zh: '最准最地道 · 要 API key，每句约 1–2 美分', en: 'Best · paid API key · ~5 s' },
 ];
 function renderEngineMenu() {
   const e = gEng(), cur = ENGINES.find(x => x.id === e) || ENGINES[0];
-  $('#engineBtn').innerHTML = `${cur.icon} ${cur.short} <span style="opacity:.6">▾</span>`;
+  $('#engineBtn').innerHTML = `${cur.icon} ${lsGet('bb-lang') === 'en' ? cur.shortEn : cur.short} <span style="opacity:.6">▾</span>`;
   $('#engineMenu').innerHTML = '<div class="eng-head">Checker 批改引擎</div>' + ENGINES.map(x => `<button type="button" role="menuitemradio" aria-checked="${x.id === e}" class="eng-item ${x.id === e ? 'on' : ''}${WEB && x.id !== 'lt' ? ' off' : ''}" data-eng="${x.id}">
     <span class="eng-ic">${x.icon}</span><span><b>${x.name}</b>${x.id === e ? ' <span class="eng-cur">✓ 正在用</span>' : ''}<small>${x.zh}</small><small class="eng-en">${x.en}</small>${WEB && x.id !== 'lt' ? '<small class="eng-need">💻 Desktop version only · 只能在电脑版用</small>' : ''}</span></button>`).join('')
     + (WEB ? `<a class="eng-get" href="${REPO_URL}#readme" target="_blank" rel="noopener">⬇️ Get the free desktop version · 下载电脑版（免费 AI 批改）</a>` : '');
@@ -1110,6 +1112,52 @@ async function resumeTranslations() {
     if (m.tr === undefined && !pending.has(m.id)) { pending.add(m.id); await translateMsg(m); pending.delete(m.id); }
 }
 renderAll(); pullServer().then(resumeTranslations);
+
+// ----- English-only interface: one click (top-right button) or open the page with ?lang=en (?lang=zh = both languages again).
+// It only hides the Chinese hints in menus, buttons and labels; chat messages, translations, phrases and vocab are never touched.
+(() => {
+  const q = new URLSearchParams(location.search).get('lang');
+  if (q) lsSet('bb-lang', q === 'en' ? 'en' : '');
+  const ZH = /[\u2e80-\u303f\u3400-\u9fff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef“”‘’]/;
+  const KEEP = '.bubble, #preview, #phrases, .vocab, #sideList .t, #title, textarea, #who button, #micLang, #helpBtn, #zhBtn, #langBtn, script, style';
+  const strip = t => !ZH.test(t) ? t : t
+    .replace(/[（(][^（）()]*[\u3400-\u9fff][^（）()]*[）)]/g, '')                          // （中文） or (中文)
+    .replace(/[\u2e80-\u303f\u3400-\u9fff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef“”‘’]+/g, ' ') // the Chinese itself
+    .replace(/\s*[·•|]\s*(?=$|[·•|])/g, '').replace(/^\s*[·•|—–-]\s*/, '').replace(/\s*[·•|—–]\s*$/, '')
+    .replace(/\s{2,}/g, ' ').replace(/\s+([.,:;!?…)])/g, '$1');
+  const orig = new Map(); // text node or [element, attribute] -> original text, so the switch can be undone
+  let on = false, busy = false;
+  const keep = n => { const el = n.nodeType === 1 ? n : n.parentElement; return !el || !!el.closest(KEEP); };
+  function fix(root) {
+    if (!on || busy) return; busy = true;
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = root.nodeType === 3 ? root : w.nextNode(); n; n = w.nextNode()) {
+      if (keep(n) || !ZH.test(n.nodeValue)) continue;
+      const t = strip(n.nodeValue); if (!orig.has(n)) orig.set(n, n.nodeValue); n.nodeValue = /\S/.test(n.nodeValue) && !/\S/.test(t) ? '' : (/^\s/.test(n.nodeValue) ? ' ' : '') + t.trim();
+      if (root.nodeType === 3) break;
+    }
+    const els = root.nodeType === 1 ? [root, ...root.querySelectorAll('[title],[placeholder],[aria-label]')] : [];
+    for (const el of els) for (const a of ['title', 'placeholder', 'aria-label']) {
+      const v = el.getAttribute?.(a); if (!v || !ZH.test(v) || keep(el) && el.id !== 'langBtn' && !el.closest('#helpBtn, #zhBtn, #micLang')) continue;
+      orig.set(el.id + '|' + a + '|' + v, [el, a, v]); el.setAttribute(a, strip(v).trim());
+    }
+    busy = false;
+  }
+  const mo = new MutationObserver(list => { if (!on) return; for (const m of list) { if (m.type === 'characterData') fix(m.target); else m.addedNodes.forEach(n => (n.nodeType === 1 || n.nodeType === 3) && fix(n)); } });
+  function apply(v) {
+    on = v; lsSet('bb-lang', v ? 'en' : ''); document.documentElement.lang = v ? 'en' : 'zh';
+    $('#langBtn').textContent = v ? '中/EN' : 'EN only';
+    $('#langBtn').title = v ? 'Show Chinese hints again · 显示中文' : 'English only — hide the Chinese hints · 只看英文';
+    if (v) { renderAll(); fix(document.body); mo.observe(document.body, { subtree: true, childList: true, characterData: true }); }
+    else {
+      mo.disconnect();
+      for (const [k, val] of orig) { if (Array.isArray(val)) val[0].setAttribute(val[1], val[2]); else if (k.isConnected) k.nodeValue = val; }
+      orig.clear(); renderAll();
+    }
+  }
+  $('#langBtn').onclick = () => apply(!on);
+  apply(lsGet('bb-lang') === 'en');
+})();
 </script>
 </body>
 </html>
