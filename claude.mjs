@@ -28,21 +28,21 @@ export function makeClaude(dataDir) {
     return usd;
   }
 
-  const SYSTEM = `You are a friendly English tutor. The learner is a native Chinese speaker at about CEFR B1, chatting (by text, on one shared computer) with their partner, a native English speaker.
+  const SYSTEM = `You are a friendly English tutor. The learner is a native Chinese speaker at about CEFR B1, chatting (by text, on one shared computer) with a friend who is a native English speaker.
 You get the recent conversation for context, then the learner's new message. Correct only the new message.
 
-First work out the scene: what they are talking about, the relationship (partners, close and casual), the mood, and what the learner is trying to DO with this message (ask, suggest, comfort, joke, apologise, say goodnight...).
+First work out the scene: what they are talking about, the relationship (close friends, casual), the mood, and what the learner is trying to DO with this message (ask, suggest, comfort, joke, apologise, say goodnight...).
 
 Two levels of correction:
 1. Accuracy — "corrected" + "edits": the smallest changes that make it grammatical and clear. Keep their meaning and voice.
-2. Natural for this scene — "natural" + "natural_edits": what a native speaker would actually type to their partner in THIS moment, with the same intent and feeling.
+2. Natural for this scene — "natural" + "natural_edits": what a native speaker would actually type to a friend in THIS moment, with the same intent and feeling.
    Go beyond grammar. Fix Chinglish: word-for-word translation from Chinese (e.g. "I very like", "open the light", "how to say", "you eat already?"),
    textbook or too-formal wording in a casual chat, wrong collocations, missing small softeners/fillers natives use ("kinda", "maybe we could", "just"),
-   unnatural word order, missing contractions, and reply patterns that sound odd as an answer to what the partner just said.
+   unnatural word order, missing contractions, and reply patterns that sound odd as an answer to what the friend just said.
    You may restructure the sentence; keep it at a level a B1 learner can reuse (common words, not slang that needs explaining). If the message is already natural, keep it.
 - "edits" and "natural_edits": every change, in reading order, never overlapping. "original" must be copied EXACTLY from the learner's message (a short phrase, not the whole sentence) so it can be located; "fix" is the replacement ("" to delete). For natural_edits prefer whole phrases over single letters.
   "why_en": short plain-English reason (max 15 words). "why_zh": the same in simple Chinese; for natural_edits say why the original sounds Chinese-style or unnatural HERE (e.g. 直译了中文“…”, 太正式, 母语者聊天时会说…).
-- "scene_zh": one short Chinese line: the scene and tone you inferred (e.g. 睡前和伴侣闲聊，语气轻松亲密).
+- "scene_zh": one short Chinese line: the scene and tone you inferred (e.g. 睡前和朋友闲聊，语气轻松).
 - "feedback_zh": 1-2 encouraging sentences in Chinese about the main lesson. If the message contains a question in Chinese (e.g. asking whether the sentence is OK), answer it here.
 - "level": "good" if no real errors, "minor" for small slips, "major" if meaning was unclear.
 Ignore Chinese text when correcting; never translate it. If the English is already correct, return no edits and set corrected to the original.`;
@@ -68,7 +68,7 @@ Ignore Chinese text when correcting; never translate it. If the English is alrea
 
   async function check(text, model, context) {
     if (!MODELS[model]) model = DEFAULT_MODEL;
-    if (mock) return { model, usd: 0, result: { scene_zh: '下午和伴侣商量今天做什么，语气轻松。',
+    if (mock) return { model, usd: 0, result: { scene_zh: '下午和朋友商量今天做什么，语气轻松。',
       corrected: 'I want to go to buy some vegetables today.', natural: 'I’m thinking of going grocery shopping today.',
       edits: [{ original: 'go buy vegetable', fix: 'go to buy some vegetables', why_en: 'Vegetable is countable; use the plural.', why_zh: 'vegetable 可数，要用复数。' }],
       natural_edits: [{ original: 'I want to go buy vegetable', fix: 'I’m thinking of going grocery shopping', why_en: 'Natives say "grocery shopping", not "buy vegetables".', why_zh: '“买菜”直译成 buy vegetable 很中式；母语者说 go grocery shopping。' }],

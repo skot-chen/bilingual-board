@@ -56,7 +56,7 @@ export function makeLocal(claude) {
   }
 
   // A small model writes slowly (~15 words/s here), so it gets a shorter answer format and one worked example.
-  const SYSTEM = `You are an English tutor. The learner is Chinese (English level B1) texting their English-speaking partner.
+  const SYSTEM = `You are an English tutor. The learner is Chinese (English level B1) texting an English-speaking friend.
 Look at the recent chat to understand the scene, then correct ONLY the learner's new message.
 - corrected: fix EVERY grammar mistake (verb forms like "haven't seen", plurals, articles, there is/are, capital I, word order, punctuation). Keep the learner's words otherwise.
 - natural: what a native speaker would really text in this moment, same meaning and feeling. Remove Chinese-style word-for-word phrasing. Use simple, common words.
@@ -65,7 +65,7 @@ Look at the recent chat to understand the scene, then correct ONLY the learner's
 - scene_zh: the scene and tone in one short Chinese line.
 - level: good / minor / major.`;
   const EXAMPLE_IN = `Recent conversation (oldest first):\n[Tom]: I made pasta for us tonight\n\nLearner's new message to correct:\ni very like your cooking, you are so good hand`;
-  const EXAMPLE_OUT = JSON.stringify({ scene_zh: '晚饭时夸伴侣做的菜，语气亲密', level: 'major',
+  const EXAMPLE_OUT = JSON.stringify({ scene_zh: '晚饭时夸朋友做的菜，语气亲切', level: 'major',
     corrected: 'I like your cooking very much. You are very good at it.',
     edits: [{ original: 'i very like your cooking,', fix: 'I like your cooking very much.', why_zh: 'very 不能直接修饰动词 like' }, { original: 'you are so good hand', fix: 'You are very good at it.', why_zh: '“好手”不能直译成 good hand' }],
     natural: 'I love your cooking. You’re so good at this!',
@@ -99,7 +99,7 @@ Look at the recent chat to understand the scene, then correct ONLY the learner's
     await ensureServer();
     const lines = (context || []).slice(-6).map(c => `[${c.who}]: ${c.text}`).join('\n');
     const body = {
-      messages: [{ role: 'system', content: `You help an English speaker who is learning Chinese write to their Chinese partner.
+      messages: [{ role: 'system', content: `You help an English speaker who is learning Chinese write to a Chinese friend.
 Turn their English message into the Chinese a native speaker would naturally text in this moment (simplified characters, casual and warm, not word-for-word).
 zh: the Chinese message. tip_en: one short English tip about a useful word or pattern in zh (max 20 words).` },
         { role: 'user', content: (lines ? `Recent chat:\n${lines}\n\n` : '') + `Message to say in Chinese:\n${text}` }],

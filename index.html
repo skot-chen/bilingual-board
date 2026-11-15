@@ -98,6 +98,7 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .seg.mini{padding:2px;align-self:center} .seg.mini button{padding:.25em .6em;font-size:.82em}
 .seg.mini button.on{background:var(--panel);color:var(--ink);font-weight:600;box-shadow:0 1px 2px #0002}
 .who .hint{color:var(--muted);font-size:.75em;margin-left:auto}
+.field .place{display:flex;gap:6px;flex-wrap:wrap}.field .place select,.field .place input{min-width:0;flex:1 1 140px}
 .phrases{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px}
 .phrases button{flex:none;font-size:.8em;text-align:left;line-height:1.25}
 .phrases button small{display:block;color:var(--muted)}
@@ -172,7 +173,8 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
   header{padding:8px 10px;gap:6px} .search{width:90px} #saveState{display:none} #timeline{padding:12px 10px}
   .bubble{max-width:84%} .who .hint{display:none}}
 </style>
-<script src="vendor/pinyin-pro.js"></script><!-- pinyin for Chinese text (MIT, pinyin-pro 3.29.5) -->
+<script src="vendor/pinyin-pro.js"></script>
+<script src="vendor/tz-countries.js"></script><!-- pinyin for Chinese text (MIT, pinyin-pro 3.29.5) -->
 </head>
 <body>
 <div class="app">
@@ -223,11 +225,12 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
 
 <dialog id="settingsDlg"><form method="dialog">
   <h2>Settings · 设置</h2>
-  <div class="field"><label for="sNameA">Person A name (中文母语)</label><input type="text" id="sNameA"></div>
-  <div class="field"><label for="sNameB">Person B name (English native)</label><input type="text" id="sNameB"></div>
-  <div class="field"><label for="sCityB">Person B city (this computer's time)<br><small>B 所在城市，消息时间旁显示</small></label><input type="text" id="sCityB"></div>
+  <div class="field"><label for="sNameA">Chinese speaker's name · 中文母语者的名字</label><input type="text" id="sNameA"></div>
+  <div class="field"><label for="sNameB">English speaker's name · 英语母语者的名字</label><input type="text" id="sNameB"></div>
+  <div class="field"><label for="sCtryA">Chinese speaker's region and place<br><small>中文母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryA"></select><select id="sTzA" hidden title="Time zone 时区"></select><input type="text" id="sCityA" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
+  <div class="field"><label for="sCtryB">English speaker's region and place<br><small>英语母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryB"></select><select id="sTzB" hidden title="Time zone 时区"></select><input type="text" id="sCityB" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
   <div class="field"><label for="sHide">Blur Chinese translations until tapped<br><small>学习模式：先读英文，点一下再看中文</small></label><input type="checkbox" id="sHide"></div>
-  <div class="field"><label for="sGrammar">Auto-check grammar of Person A's English<br><small>自动检查 A 发出的英文语法（LanguageTool 在线服务）</small></label><input type="checkbox" id="sGrammar"></div>
+  <div class="field"><label for="sGrammar">Auto-check grammar of the Chinese speaker's English<br><small>自动检查中文母语者发出的英文语法（LanguageTool 在线服务）</small></label><input type="checkbox" id="sGrammar"></div>
   <fieldset class="ai-box"><legend>✍️ Grammar checker · 批改引擎</legend>
     <div class="field"><label for="sGEngine">Checker 引擎</label>
       <select id="sGEngine"><option value="local">🐱 Qwen3 4B · 本地免费模型（看场景改地道，每句约 20 秒）</option><option value="lt">Free · LanguageTool（免费，只查拼写语法）</option><option value="claude">🤖 Claude AI（付费，会改通顺/地道）</option></select></div>
@@ -273,15 +276,17 @@ const isZh = t => { const cjk = (t.match(/[㐀-鿿豈-﫿]/g) || []).length; con
 const KEY = 'bilingual-board-v1';
 
 // ---------- state ----------
+// boards saved with the old default names (Me / Partner) get the new ones (S / A)
+const renameOld = s => { if (s.nameA === 'Me' && s.nameB === 'Partner') { s.nameA = 'S'; s.nameB = 'A'; } return s; };
 function freshState() {
   const c = newConv();
   return { version: 1, updatedAt: 0, deleted: [], // updatedAt 0: a brand-new browser never counts as "newer"
-    settings: { nameA: 'Me', nameB: 'Partner', hideZh: true, autoSwitch: true, autoGrammar: true, gEngine: 'local', aiModel: 'claude-opus-5-5', engine: 'auto', rate: 0.85, scale: 1 },
+    settings: { nameA: 'S', nameB: 'A', hideZh: true, autoSwitch: true, autoGrammar: true, gEngine: 'local', aiModel: 'claude-opus-5-5', engine: 'auto', rate: 0.85, scale: 1 },
     conversations: [c], activeId: c.id, vocab: [], speaker: 'A' };
 }
 function newConv(title) { const d = new Date(); return { id: uid(), title: title || 'Chat ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), created: Date.now(), messages: [] }; }
 let S = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || freshState(); } catch { return freshState(); } })();
-S.settings = Object.assign(freshState().settings, S.settings);
+S.settings = renameOld(Object.assign(freshState().settings, S.settings));
 const conv = () => S.conversations.find(c => c.id === S.activeId) || S.conversations[0];
 function markDeleted(id) { (S.deleted ||= []).push(id); }
 
@@ -314,7 +319,7 @@ async function pullServer() {
     // merge, never replace: keeps chats from both this browser and the saved file
     if (remote && Array.isArray(remote.conversations)) {
       const before = countMessages(S);
-      S = mergeBoard(S, remote); S.settings = Object.assign(freshState().settings, S.settings);
+      S = mergeBoard(S, remote); S.settings = renameOld(Object.assign(freshState().settings, S.settings));
       localStorage.setItem(KEY, JSON.stringify(S));
       if (countMessages(S) !== before || !S.conversations.some(c => c.id === S.activeId)) renderAll();
     }
@@ -532,11 +537,34 @@ const nameOf = sp => sp === 'A' ? S.settings.nameA : S.settings.nameB;
 const dayLabel = ts => { const d = new Date(ts), t = new Date(); const y = new Date(); y.setDate(t.getDate() - 1);
   if (d.toDateString() === t.toDateString()) return 'Today · 今天'; if (d.toDateString() === y.toDateString()) return 'Yesterday · 昨天';
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); };
-// Person A lives in Guangzhou (China time); Person B uses this computer's own clock.
-const GZ_TZ = 'Asia/Shanghai';
+// Each person picks a country/region (+ a time zone when the country has several, + an optional city) in Settings:
+// ctryA/tzA/cityA and ctryB/tzB/cityB. Nothing picked = this computer's clock and no place shown.
+const TZC = {}; (window.TZ_COUNTRIES || '').split(';').forEach(x => { const [c, z] = x.split(':'); if (c && z) TZC[c] = z.split(','); });
+const regionName = (c, lang) => { try { return new Intl.DisplayNames([lang], { type: 'region' }).of(c); } catch { return c; } };
+const zoneOK = z => { try { new Intl.DateTimeFormat('en-US', { timeZone: z }); return true; } catch { return false; } };
+const zoneOff = z => { try { return new Intl.DateTimeFormat('en-US', { timeZone: z, timeZoneName: 'shortOffset' }).formatToParts(new Date()).find(x => x.type === 'timeZoneName').value; } catch { return ''; } };
 const clockOf = (ts, tz) => new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
-const timeLabel = (ts, sp) => sp === 'A' ? clockOf(ts, GZ_TZ) + ' 广州' : clockOf(ts) + ' ' + (S.settings.cityB || 'Rijswijk');
-const timeTip = (ts, sp) => sp === 'A' ? (S.settings.cityB || 'Rijswijk') + ': ' + clockOf(ts) : 'Guangzhou 广州: ' + clockOf(ts, GZ_TZ);
+const tzOf = sp => { const z = S.settings['tz' + sp]; return z && zoneOK(z) ? z : ''; };
+const placeOf = sp => { const s = S.settings, c = s['ctry' + sp]; return s['city' + sp] || (c ? regionName(c, 'en') + ' ' + regionName(c, 'zh') : ''); };
+const timeLabel = (ts, sp) => clockOf(ts, tzOf(sp)) + (placeOf(sp) ? ' ' + placeOf(sp) : '');
+const timeTip = (ts, sp) => { const o = sp === 'A' ? 'B' : 'A'; return nameOf(o) + (placeOf(o) ? ' (' + placeOf(o) + ')' : '') + ': ' + clockOf(ts, tzOf(o)); };
+let ctryOptions = '';
+function fillPlaceMenus() {
+  if (!ctryOptions) ctryOptions = '<option value="">Not set · 不选（用这台电脑的时间）</option>' + Object.keys(TZC)
+    .map(c => [c, regionName(c, 'en'), regionName(c, 'zh')]).sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([c, en, zh]) => `<option value="${c}">${esc(en)} · ${esc(zh)}</option>`).join('');
+  for (const k of ['A', 'B']) {
+    const el = $('#sCtry' + k); if (!el.options.length) el.innerHTML = ctryOptions;
+    el.value = S.settings['ctry' + k] || ''; renderTzMenu(k); $('#sCity' + k).value = S.settings['city' + k] || '';
+  }
+}
+// second menu: only shown when the country has more than one time zone (e.g. USA, Australia; China has two)
+function renderTzMenu(k) {
+  const zones = (TZC[$('#sCtry' + k).value] || []).filter(zoneOK), el = $('#sTz' + k);
+  el.innerHTML = zones.map(z => `<option value="${z}">${z.split('/').slice(1).join(' / ').replace(/_/g, ' ')} · ${zoneOff(z)}</option>`).join('');
+  el.hidden = zones.length < 2;
+  const cur = S.settings['tz' + k]; el.value = zones.includes(cur) ? cur : (zones[0] || '');
+}
 function highlight(text, q) { const t = esc(text); if (!q) return t; const re = new RegExp(esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); return t.replace(re, m => '<mark>' + m + '</mark>'); }
 
 const PHRASES = {
@@ -692,7 +720,7 @@ function msgHTML(m) {
     ? `<div class="edit-box"><textarea class="edit-ta" rows="3">${esc(m.text)}</textarea><div class="edit-acts"><span class="muted-s">Enter = save · Esc = cancel</span><button type="button" data-act="editCancel">Cancel 取消</button><button type="button" class="primary" data-act="editSave">Save 保存</button></div></div>`
     : `<div class="orig">${marksHTML(m)}</div>${notesList(m)}`;
   return `<div class="msg ${m.speaker}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
-  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${timeTip(m.ts, m.speaker)}">${timeLabel(m.ts, m.speaker)}</span><span>${m.lang === 'zh' ? '中文' : 'EN'}</span>${edited}</div>
+  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${m.lang === 'zh' ? '中文' : 'EN'}</span>${edited}</div>
   ${body}${tr}${fix}${note}
   <div class="acts">
     <button class="icon" data-act="edit" title="Edit / fix typos 修改（改错字）">✏️ Edit</button>
@@ -834,7 +862,7 @@ $('#importFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   try { const j = JSON.parse(await f.text()); if (!Array.isArray(j.conversations)) throw 0;
     if (!confirm('Replace ALL current chats with this backup? 用备份替换当前全部数据？')) return;
-    S = j; S.settings = Object.assign(freshState().settings, S.settings); save(); renderAll(); toast('Restored 已恢复'); }
+    S = j; S.settings = renameOld(Object.assign(freshState().settings, S.settings)); save(); renderAll(); toast('Restored 已恢复'); }
   catch { toast('Not a valid backup file'); } e.target.value = '';
 };
 
@@ -959,12 +987,16 @@ $('#title').onclick = () => { const t = prompt('Rename chat 重命名:', conv().
 $('#search').oninput = e => { query = e.target.value.trim(); renderTimeline(); };
 $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
 $('#settingsBtn').onclick = () => {
-  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; $('#sCityB').value = s.cityB || 'Rijswijk'; $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
+  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillPlaceMenus(); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
   $('#sGEngine').value = s.gEngine; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
   $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); $('#settingsDlg').showModal();
 };
 $('#settingsDlg').addEventListener('input', () => {
-  const s = S.settings; s.nameA = $('#sNameA').value.trim() || 'Me'; s.nameB = $('#sNameB').value.trim() || 'Partner'; s.cityB = $('#sCityB').value.trim() || 'Rijswijk'; s.hideZh = $('#sHide').checked;
+  const s = S.settings; s.nameA = $('#sNameA').value.trim() || 'S'; s.nameB = $('#sNameB').value.trim() || 'A'; for (const k of ['A', 'B']) {
+    const c = $('#sCtry' + k).value; if (c !== (s['ctry' + k] || '')) { s['ctry' + k] = c; renderTzMenu(k); }
+    s['tz' + k] = c ? $('#sTz' + k).value : ''; s['city' + k] = $('#sCity' + k).value.trim();
+  }
+  s.hideZh = $('#sHide').checked;
   s.autoSwitch = $('#sSwitch').checked; s.autoGrammar = $('#sGrammar').checked; s.gEngine = $('#sGEngine').value; s.aiModel = $('#sModel').value; s.engine = $('#sEngine').value; s.rate = +$('#sRate').value; s.scale = +$('#sScale').value; save(); renderAll();
 });
 speechSynthesis?.addEventListener?.('voiceschanged', () => {});

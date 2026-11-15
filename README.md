@@ -50,12 +50,12 @@ Every correction shows which checker made it. · 每条批改都会标明是哪�
 
 ## Features · 功能
 
-- Switch the speaker with the button or Alt+S. Person A (the Chinese speaker) is on the left; person B (the English speaker) is on the right.
+- Switch the speaker with the button or Alt+S. The Chinese speaker (named S by default) is on the left; the English speaker (named A) is on the right. You can change both names in ⚙️ Settings.
 - Automatic translation. In learning mode, the Chinese is blurred until you click it.
-- **中→EN** turns a Chinese draft into English. **EN→中** (for B) gives natural Chinese with pinyin and a tip.
+- **中→EN** turns a Chinese draft into English. **EN→中** (for the English speaker) gives natural Chinese with pinyin and a tip.
 - Red-pen corrections that read the scene: a "This moment" version, plus an "only fix mistakes" version.
 - ⭐ Vocabulary list with flashcards and CSV export. 🔊 Read aloud. 🎤 Voice input (Chrome and Edge).
-- Message times for two places: A in Guangzhou time, B in this computer's time, with a city name you can change in ⚙️ Settings.
+- Message times for two places: in ⚙️ Settings each person can choose a country or region (and a time zone if it has more than one), plus an optional city. If nothing is chosen, the board uses this computer's time.
 - Search, several conversations, Markdown export, JSON backup and restore, dark mode.
 
 ## Your data · 数据
@@ -70,7 +70,7 @@ Every correction shows which checker made it. · 每条批改都会标明是哪�
 ## Files
 
 `server.mjs` is the small local server; it has no dependencies. `index.html` is the whole app. `local.mjs` runs the free model, `claude.mjs` calls Claude, `merge.cjs` merges saved copies safely, and `setup.mjs` downloads the free model.
-Pinyin comes from [pinyin-pro](https://github.com/zh-lx/pinyin-pro) (MIT), in `vendor/`.
+Pinyin comes from [pinyin-pro](https://github.com/zh-lx/pinyin-pro) (MIT), and the country/time-zone list from the IANA time zone database (public domain); both are in `vendor/`.
 
 Settings for advanced users (environment variables): `PORT` (default 8765), `BOARD_DATA_DIR`, `LOCAL_LLM_DIR`, `LOCAL_LLM_PORT` (default 8790).
 
