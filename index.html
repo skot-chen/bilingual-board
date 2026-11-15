@@ -532,11 +532,11 @@ const nameOf = sp => sp === 'A' ? S.settings.nameA : S.settings.nameB;
 const dayLabel = ts => { const d = new Date(ts), t = new Date(); const y = new Date(); y.setDate(t.getDate() - 1);
   if (d.toDateString() === t.toDateString()) return 'Today · 今天'; if (d.toDateString() === y.toDateString()) return 'Yesterday · 昨天';
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }); };
-// Person A uses China time (Asia/Shanghai); Person B uses this computer's own clock.
+// Person A lives in Guangzhou (China time); Person B uses this computer's own clock.
 const GZ_TZ = 'Asia/Shanghai';
 const clockOf = (ts, tz) => new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
-const timeLabel = (ts, sp) => sp === 'A' ? clockOf(ts, GZ_TZ) + ' Shanghai' : clockOf(ts) + ' ' + (S.settings.cityB || 'Amsterdam');
-const timeTip = (ts, sp) => sp === 'A' ? (S.settings.cityB || 'Amsterdam') + ': ' + clockOf(ts) : 'Shanghai 上海: ' + clockOf(ts, GZ_TZ);
+const timeLabel = (ts, sp) => sp === 'A' ? clockOf(ts, GZ_TZ) + ' 广州' : clockOf(ts) + ' ' + (S.settings.cityB || 'Rijswijk');
+const timeTip = (ts, sp) => sp === 'A' ? (S.settings.cityB || 'Rijswijk') + ': ' + clockOf(ts) : 'Guangzhou 广州: ' + clockOf(ts, GZ_TZ);
 function highlight(text, q) { const t = esc(text); if (!q) return t; const re = new RegExp(esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); return t.replace(re, m => '<mark>' + m + '</mark>'); }
 
 const PHRASES = {
@@ -959,12 +959,12 @@ $('#title').onclick = () => { const t = prompt('Rename chat 重命名:', conv().
 $('#search').oninput = e => { query = e.target.value.trim(); renderTimeline(); };
 $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
 $('#settingsBtn').onclick = () => {
-  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; $('#sCityB').value = s.cityB || 'Amsterdam'; $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
+  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; $('#sCityB').value = s.cityB || 'Rijswijk'; $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
   $('#sGEngine').value = s.gEngine; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
   $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); $('#settingsDlg').showModal();
 };
 $('#settingsDlg').addEventListener('input', () => {
-  const s = S.settings; s.nameA = $('#sNameA').value.trim() || 'Me'; s.nameB = $('#sNameB').value.trim() || 'Partner'; s.cityB = $('#sCityB').value.trim() || 'Amsterdam'; s.hideZh = $('#sHide').checked;
+  const s = S.settings; s.nameA = $('#sNameA').value.trim() || 'Me'; s.nameB = $('#sNameB').value.trim() || 'Partner'; s.cityB = $('#sCityB').value.trim() || 'Rijswijk'; s.hideZh = $('#sHide').checked;
   s.autoSwitch = $('#sSwitch').checked; s.autoGrammar = $('#sGrammar').checked; s.gEngine = $('#sGEngine').value; s.aiModel = $('#sModel').value; s.engine = $('#sEngine').value; s.rate = +$('#sRate').value; s.scale = +$('#sScale').value; save(); renderAll();
 });
 speechSynthesis?.addEventListener?.('voiceschanged', () => {});
