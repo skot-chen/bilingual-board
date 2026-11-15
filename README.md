@@ -55,7 +55,7 @@ Every correction shows which checker made it. · 每条批改都会标明是哪�
 - **中→EN** turns a Chinese draft into English. **EN→中** (for B) gives natural Chinese with pinyin and a tip.
 - Red-pen corrections that read the scene: a "This moment" version, plus an "only fix mistakes" version.
 - ⭐ Vocabulary list with flashcards and CSV export. 🔊 Read aloud. 🎤 Voice input (Chrome and Edge).
-- Message times for two places: A in Guangzhou time, B in this computer's time, with a city name you can change in ⚙️ Settings.
+- Message times for two places: A in China time (shown as Shanghai), B in this computer's time, with a city name you can change in ⚙️ Settings.
 - Search, several conversations, Markdown export, JSON backup and restore, dark mode.
 
 ## Your data · 数据
