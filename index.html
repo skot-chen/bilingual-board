@@ -48,7 +48,7 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .day:before{content:"";display:block;border-top:1px solid var(--line);position:relative;top:.7em}
 .gap{text-align:center;color:var(--muted);font-size:.72em;margin:6px 0}
 .msg{display:flex;margin:8px 0;gap:10px}
-.msg.B{flex-direction:row-reverse}
+.msg.right{flex-direction:row-reverse}.msg.A{--sc:var(--a)}.msg.B{--sc:var(--b)}
 .avatar{width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:700;color:#fff;font-size:.85em}
 .A .avatar{background:var(--a)} .B .avatar{background:var(--b)}
 /* cat illustrations (img/, cut by tools/board_cats.py): A = fawn cat 浅黄褐三花, B = lilac cat 丁香三花 */
@@ -65,8 +65,8 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .empty-cat{height:80px;display:block;margin:0 auto 10px}
 @media (prefers-color-scheme:dark){.empty-cats img,.empty-cat,.brand-cats img{filter:brightness(.92)}}
 .bubble{max-width:min(680px,78%);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px}
-.A .bubble{border-top-left-radius:4px;border-left:3px solid var(--a)}
-.B .bubble{border-top-right-radius:4px;border-right:3px solid var(--b)}
+.msg:not(.right) .bubble{border-top-left-radius:4px;border-left:3px solid var(--sc)}
+.msg.right .bubble{border-top-right-radius:4px;border-right:3px solid var(--sc)}
 .meta{font-size:.75em;color:var(--muted);display:flex;gap:8px;margin-bottom:4px}
 .meta b{color:var(--ink)}
 .orig{font-size:1.12em;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
@@ -102,6 +102,7 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .eng-item.off{opacity:.55}.eng-need{display:block;color:#b45309}.eng-get{display:block;padding:8px 10px;font-size:.85em;text-decoration:none;border-top:1px solid rgba(127,127,127,.25)}
 @media (max-width:600px){.row:has(> #checkBtn){flex-wrap:wrap;row-gap:6px}}
 [hidden]{display:none!important}
+#meDlg .me-btns{display:flex;flex-direction:column;gap:8px;margin:12px 0}#meDlg .me-btns button{text-align:left;padding:10px 12px}#meDlg .me-btns small{display:block;opacity:.75}
 .lang-btn{font-size:.8em;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
 .sync-btns{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}#syncHow{margin:4px 0 8px}#syncHow small{line-height:1.7}
 .phrases{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px}
@@ -235,6 +236,7 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
   <div class="field"><label for="sNameB">English speaker's name · 英语母语者的名字</label><input type="text" id="sNameB"></div>
   <div class="field"><label for="sCtryA">Chinese speaker's region and place<br><small>中文母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryA"></select><select id="sTzA" hidden title="Time zone 时区"></select><input type="text" id="sCityA" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
   <div class="field"><label for="sCtryB">English speaker's region and place<br><small>英语母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryB"></select><select id="sTzB" hidden title="Time zone 时区"></select><input type="text" id="sCityB" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
+  <div class="field"><label for="sMe">Who uses this device<br><small>这台设备是谁在用（只存在这个浏览器里，不会同步）</small></label><select id="sMe"></select></div>
   <div class="field"><label for="sHide">Blur Chinese translations until tapped<br><small>学习模式：先读英文，点一下再看中文</small></label><input type="checkbox" id="sHide"></div>
   <div class="field"><label for="sGrammar">Auto-check grammar of the Chinese speaker's English<br><small>自动检查中文母语者发出的英文语法（LanguageTool 在线服务）</small></label><input type="checkbox" id="sGrammar"></div>
   <fieldset class="ai-box"><legend>✍️ Grammar checker · 批改引擎</legend>
@@ -317,6 +319,12 @@ function markDeleted(id) { (S.deleted ||= []).push(id); }
 const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
 const lsSet = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} };
 const GH_FILE = 'board.json';
+// Who uses this device. Open with ?me=zh (Chinese speaker), ?me=en (English speaker) or ?me=both (shared computer).
+let ME = (() => { const q = new URLSearchParams(location.search).get('me');
+  if (q) { lsSet('bb-me', q === 'zh' ? 'A' : q === 'en' ? 'B' : ''); lsSet('bb-me-set', '1'); }
+  const v = lsGet('bb-me'); return v === 'A' || v === 'B' ? v : ''; })();
+const isRight = sp => ME ? sp === ME : sp === 'B';
+function setMe(v) { ME = v === 'A' || v === 'B' ? v : ''; lsSet('bb-me', ME); lsSet('bb-me-set', '1'); if (ME) S.speaker = ME; save(); renderAll(); }
 const GH = { token: lsGet('bb-gh-token'), repo: lsGet('bb-gh-repo') || (location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] + '/bilingual-board-data' : ''),
   busy: false, again: false, timer: 0, msg: '' };
 const b64e = str => { const b = new TextEncoder().encode(str); let o = ''; for (let i = 0; i < b.length; i += 0x8000) o += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(o); };
@@ -343,7 +351,9 @@ async function ghSync() {
       } else if (r.status !== 404) throw r.status;
       if (remote && Array.isArray(remote.conversations)) {
         const before = JSON.stringify(S.conversations) + S.activeId;
+        const keepSp = S.speaker, keepId = S.activeId;
         S = mergeBoard(S, remote); S.settings = renameOld(Object.assign(freshState().settings, S.settings));
+        S.speaker = ME || keepSp; if (S.conversations.some(c => c.id === keepId)) S.activeId = keepId;
         lsSet(KEY, JSON.stringify(S));
         if (JSON.stringify(S.conversations) + S.activeId !== before) { renderAll(); if (!WEB) pushServer(); }
       }
@@ -804,7 +814,7 @@ function msgHTML(m) {
   const body = editingId === m.id
     ? `<div class="edit-box"><textarea class="edit-ta" rows="3">${esc(m.text)}</textarea><div class="edit-acts"><span class="muted-s">Enter = save · Esc = cancel</span><button type="button" data-act="editCancel">Cancel 取消</button><button type="button" class="primary" data-act="editSave">Save 保存</button></div></div>`
     : `<div class="orig">${marksHTML(m)}</div>${notesList(m)}`;
-  return `<div class="msg ${m.speaker}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
+  return `<div class="msg ${m.speaker}${isRight(m.speaker) ? ' right' : ''}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
   <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${m.lang === 'zh' ? '中文' : 'EN'}</span>${edited}</div>
   ${body}${tr}${fix}${note}
   <div class="acts">
@@ -820,9 +830,11 @@ function msgHTML(m) {
   </div></div></div>`;
 }
 function renderComposer() {
+  if (ME) S.speaker = ME;
   const sp = S.speaker;
-  $('#who').innerHTML = '<div class="seg" role="group" aria-label="Who is speaking">' + ['A', 'B'].map(k => `<button type="button" class="${k} ${sp === k ? 'on' : ''}" data-sp="${k}" aria-pressed="${sp === k}"><img class="face" src="img/face-${k === 'A' ? 'a' : 'b'}.png" alt="">${esc(nameOf(k))}<span class="tag">${k === 'A' ? '中/EN' : 'EN'}</span></button>`).join('') + '</div>' +
-    `<span class="hint">Speaking now: <b>${esc(nameOf(sp))}</b> · Alt+S to switch 切换</span>`;
+  $('#who').innerHTML = '<div class="seg" role="group" aria-label="Who is speaking">' + (ME ? [ME] : ['A', 'B']).map(k => `<button type="button" class="${k} ${sp === k ? 'on' : ''}" data-sp="${k}" aria-pressed="${sp === k}"><img class="face" src="img/face-${k === 'A' ? 'a' : 'b'}.png" alt="">${esc(nameOf(k))}<span class="tag">${k === 'A' ? '中/EN' : 'EN'}</span></button>`).join('') + '</div>' +
+    (ME ? `<span class="hint">🔒 This device is for <b>${esc(nameOf(sp))}</b> · 这台设备已固定（⚙️ 设置里可改）</span>`
+    : `<span class="hint">Speaking now: <b>${esc(nameOf(sp))}</b> · Alt+S to switch 切换</span>`);
   $('#phrases').innerHTML = PHRASES[sp].map(([en, zh]) => `<button data-ph="${esc(en)}">${esc(en)}<small>${esc(zh)}</small></button>`).join('');
   $('#composer').classList.toggle('speakB', sp === 'B');
   $('#helpBtn').style.display = $('#checkBtn').style.display = sp === 'A' ? '' : 'none';
@@ -843,7 +855,7 @@ function send() {
   const m = { id: uid(), ts: Date.now(), speaker: S.speaker, text, lang: isZh(text) ? 'zh' : 'en' };
   conv().messages.push(m);
   $('#draft').value = ''; autoGrow(); closePreview();
-  if (S.settings.autoSwitch) S.speaker = S.speaker === 'A' ? 'B' : 'A';
+  if (S.settings.autoSwitch && !ME) S.speaker = S.speaker === 'A' ? 'B' : 'A';
   save(); query = ''; $('#search').value = ''; renderTimeline(); renderComposer(); renderSide(); renderHeader();
   translateMsg(m); $('#draft').focus();
   if (m.speaker === 'A' && S.settings.autoGrammar && /[A-Za-z]{2}/.test(m.text) && m.lang === 'en') checkMessage(m, true);
@@ -972,7 +984,7 @@ $('#expandBtn').onclick = () => { setH(baseH() > 120 ? 56 : innerHeight * 0.4); 
 updateExpandBtn();
 autoGrow();
 $('#draft').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
-document.addEventListener('keydown', e => { if (e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); S.speaker = S.speaker === 'A' ? 'B' : 'A'; save(); renderComposer(); } });
+document.addEventListener('keydown', e => { if (e.altKey && (e.key === 's' || e.key === 'S') && !ME) { e.preventDefault(); S.speaker = S.speaker === 'A' ? 'B' : 'A'; save(); renderComposer(); } });
 $('#sendBtn').onclick = send;
 $('#helpBtn').onclick = helpSayIt;
 $('#checkBtn').onclick = checkDraft;
@@ -1073,7 +1085,7 @@ $('#title').onclick = () => { const t = prompt('Rename chat 重命名:', conv().
 $('#search').oninput = e => { query = e.target.value.trim(); renderTimeline(); };
 $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
 $('#settingsBtn').onclick = () => {
-  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillPlaceMenus(); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
+  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillMeMenu(); fillPlaceMenus(); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
   $('#sGEngine').value = gEng(); $('#sGEngine').disabled = WEB; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
   $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); renderSyncBox(); $('#settingsDlg').showModal();
 };
@@ -1104,6 +1116,26 @@ $('#syncForget').onclick = () => {
   GH.token = ''; GH.msg = ''; lsSet('bb-gh-token', ''); renderSyncBox(); if (WEB) setSaveState('Saved in this browser 存在本浏览器');
 };
 if (GH.token) setTimeout(ghSync, 500);
+function fillMeMenu() {
+  const n = k => esc(nameOf(k));
+  $('#sMe').innerHTML = `<option value="">Shared computer — both people · 两人共用一台（可切换说话人）</option>
+    <option value="A">Only ${n('A')} (Chinese speaker) · 只给 ${n('A')} 用</option><option value="B">Only ${n('B')} (English speaker) · 只给 ${n('B')} 用</option>`;
+  $('#sMe').value = ME;
+}
+$('#sMe').onchange = () => setMe($('#sMe').value);
+// first visit of the web version: ask once who is using this device
+if (WEB && !lsGet('bb-me-set')) {
+  const d = document.createElement('dialog'); d.id = 'meDlg';
+  d.innerHTML = `<h2>Who is using this device? · 这台设备是谁在用？</h2>
+    <p><small>Your messages will always be sent as you, and shown on the right. You can change this later in ⚙️ Settings.<br>以后发的消息都算你的，显示在右边。以后可以在 ⚙️ 设置里改。</small></p>
+    <div class="me-btns"><button type="button" data-me="A"><b>${esc(nameOf('A'))}</b> — I'm the Chinese speaker · 我是中文母语者</button>
+    <button type="button" data-me="B"><b>${esc(nameOf('B'))}</b> — I'm the English speaker · 我是英语母语者</button>
+    <button type="button" data-me=""><b>Both of us</b> — we share this device · 两个人共用<small>Switch the speaker by hand · 手动切换说话人</small></button></div>`;
+  document.body.appendChild(d);
+  d.onclick = e => { const b = e.target.closest('[data-me]'); if (!b) return; setMe(b.dataset.me); d.close(); d.remove(); };
+  d.addEventListener('cancel', e => e.preventDefault());
+  setTimeout(() => d.showModal(), 300);
+}
 speechSynthesis?.addEventListener?.('voiceschanged', () => {});
 
 const pending = new Set();
