@@ -8,6 +8,11 @@ Works on **Windows** and **macOS**. No accounts and no cloud needed. Chats stay 
 
 ![cats](img/fawn-step.png)
 
+**Try it online · 在线试用:** https://skot-chen.github.io/bilingual-board/
+
+The web version runs in your browser. Chats are saved only in that browser, and grammar checking uses LanguageTool (spelling and basic grammar). For the free AI checker that reads the scene, download the desktop version below.
+网页版直接在浏览器里用，聊天记录只存在这个浏览器里，批改只能用 LanguageTool。想用看场景的免费 AI 批改，请按下面的步骤下载电脑版。
+
 ## Quick start · 快速开始
 
 1. Install **Node.js 18 or newer**: https://nodejs.org · 安装 Node.js（18 或更新）

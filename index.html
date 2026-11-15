@@ -99,6 +99,7 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .seg.mini button.on{background:var(--panel);color:var(--ink);font-weight:600;box-shadow:0 1px 2px #0002}
 .who .hint{color:var(--muted);font-size:.75em;margin-left:auto}
 .field .place{display:flex;gap:6px;flex-wrap:wrap}.field .place select,.field .place input{min-width:0;flex:1 1 140px}
+.eng-item.off{opacity:.55}.eng-need{display:block;color:#b45309}.eng-get{display:block;padding:8px 10px;font-size:.85em;text-decoration:none;border-top:1px solid rgba(127,127,127,.25)}
 .phrases{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px}
 .phrases button{flex:none;font-size:.8em;text-align:left;line-height:1.25}
 .phrases button small{display:block;color:var(--muted)}
@@ -285,6 +286,10 @@ function freshState() {
     conversations: [c], activeId: c.id, vocab: [], speaker: 'A' };
 }
 function newConv(title) { const d = new Date(); return { id: uid(), title: title || 'Chat ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), created: Date.now(), messages: [] }; }
+// Web version (GitHub Pages, or ?web): no local server — chats stay in this browser, only the online LanguageTool checker works.
+const WEB = /.github.io$/.test(location.hostname) || new URLSearchParams(location.search).has('web');
+const REPO_URL = 'https://github.com/skot-chen/bilingual-board';
+const gEng = () => WEB ? 'lt' : S.settings.gEngine;
 let S = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || freshState(); } catch { return freshState(); } })();
 S.settings = renameOld(Object.assign(freshState().settings, S.settings));
 const conv = () => S.conversations.find(c => c.id === S.activeId) || S.conversations[0];
@@ -292,6 +297,7 @@ function markDeleted(id) { (S.deleted ||= []).push(id); }
 
 let serverOK = false, serverEverOK = false, saveTimer;
 function save() {
+  if (WEB) { localStorage.setItem(KEY, JSON.stringify(S)); setSaveState('Saved in this browser 存在本浏览器'); return; }
   S.updatedAt = Date.now();
   localStorage.setItem(KEY, JSON.stringify(S));
   clearTimeout(saveTimer);
@@ -307,12 +313,13 @@ async function pushServer() {
 function setSaveState(t) {
   const el = $('#saveState'); el.textContent = t;
   el.title = t.startsWith('⚠') ? 'Not saved to the data folder. Start the board with start.bat (Windows) or start.command (Mac) — it will sync automatically.\n没有存到 data 文件夹。双击 start.bat（Windows）或 start.command（Mac）启动后会自动同步。' : '';
+  if (WEB) el.title = 'Web version: chats are saved only in this browser on this device. Use 💾 backup to move them.\n网页版：聊天记录只存在这台设备的这个浏览器里，换设备请用备份导出/导入。';
   el.style.color = t.startsWith('⚠') ? '#dc2626' : '';
 }
 // If the server was stopped, keep trying to reconnect; once back, newer browser data is pushed to data/.
-if (location.protocol !== 'file:') setInterval(() => { if (!serverOK) pullServer(); }, 10000);
+if (location.protocol !== 'file:' && !WEB) setInterval(() => { if (!serverOK) pullServer(); }, 10000);
 async function pullServer() {
-  if (location.protocol === 'file:') { setSaveState('Saved in browser'); return; }
+  if (location.protocol === 'file:' || WEB) { setSaveState(WEB ? 'Saved in this browser 存在本浏览器' : 'Saved in browser'); return; }
   try {
     const r = await fetch('/api/state'); if (!r.ok) throw 0;
     serverOK = serverEverOK = true; const remote = await r.json();
@@ -398,10 +405,10 @@ async function explainZh(msg) { return GRAMMAR_ZH[msg] || (msg.startsWith('Use �
 
 // ----- Claude AI check (through the local server, which holds the API key) -----
 // 'claude' (paid API) and 'local' (free model on this PC, local.mjs) give the same kind of answer
-const useClaude = () => S.settings.gEngine === 'claude' || S.settings.gEngine === 'local';
+const useClaude = () => gEng() === 'claude' || gEng() === 'local';
 async function claudeCheck(text, context) {
   if (!serverOK) throw new Error('The AI check needs the server — run start.bat 需要先运行 start.bat');
-  const r = await fetch(S.settings.gEngine === 'local' ? '/api/local/check' : '/api/claude/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, model: S.settings.aiModel, context: context || [] }) });
+  const r = await fetch(gEng() === 'local' ? '/api/local/check' : '/api/claude/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, model: S.settings.aiModel, context: context || [] }) });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
   return j; // { model, usd, result: { scene_zh, corrected, edits[], natural, natural_edits[], feedback_zh, level } }
 }
@@ -425,6 +432,7 @@ function redPenHTML(text, marks) {
 }
 async function claudeStatus() {
   const el = $('#claudeStatus');
+  if (WEB) { el.textContent = '💻 Desktop version only — the web version uses LanguageTool. 网页版只能用 LanguageTool'; return; }
   if (!serverOK) { el.textContent = '⚠ Run start.bat to use Claude. 需要先运行 start.bat'; return; }
   try { const s = await (await fetch('/api/claude/status')).json();
     el.textContent = (s.hasKey ? `✓ Key saved ${s.keyHint || ''}` : '✗ No key yet 还没有 key') + ` · ${s.usage.checks} checks, ≈ $${s.usage.usd.toFixed(3)} spent 已花费`; }
@@ -465,9 +473,9 @@ async function checkMessage(m, quiet) {
       const nat = claudeMarks(en, (res.natural_edits || []).filter(e => (e.fix || '').trim() !== (e.original || '').trim()));
       m.ai = { natural: res.natural, scene: res.scene_zh, feedback: res.feedback_zh, level: res.level, model, usd, unplaced,
         natMarks: nat.marks.map(k => ({ start: k.start, end: k.end, fix: k.fix, note: k.note })), natUnplaced: nat.unplaced };
-      m.checked = Date.now(); m.checkedBy = S.settings.gEngine;
+      m.checked = Date.now(); m.checkedBy = gEng();
       if (!quiet || res.level !== 'good') toast(res.level === 'good' ? '✓ Great English! 写得很好' : `🤖 ${(res.edits || []).length} correction(s) 处批改`);
-    } catch (e) { toast((S.settings.gEngine === 'local' ? 'Qwen3 4B: ' : 'Claude: ') + e.message); }
+    } catch (e) { toast((gEng() === 'local' ? 'Qwen3 4B: ' : 'Claude: ') + e.message); }
     m.checking = false; save(); rerenderMsg(m); return;
   }
   try {
@@ -586,12 +594,13 @@ const ENGINES = [
   { id: 'claude', icon: '🤖', short: 'Claude', name: 'Claude · 最准', zh: '最准最地道 · 要 API key，每句约 1–2 美分', en: 'Best · paid API key · ~5 s' },
 ];
 function renderEngineMenu() {
-  const e = S.settings.gEngine, cur = ENGINES.find(x => x.id === e) || ENGINES[0];
+  const e = gEng(), cur = ENGINES.find(x => x.id === e) || ENGINES[0];
   $('#engineBtn').innerHTML = `${cur.icon} ${cur.short} <span style="opacity:.6">▾</span>`;
-  $('#engineMenu').innerHTML = '<div class="eng-head">Checker 批改引擎</div>' + ENGINES.map(x => `<button type="button" role="menuitemradio" aria-checked="${x.id === e}" class="eng-item ${x.id === e ? 'on' : ''}" data-eng="${x.id}">
-    <span class="eng-ic">${x.icon}</span><span><b>${x.name}</b>${x.id === e ? ' <span class="eng-cur">✓ 正在用</span>' : ''}<small>${x.zh}</small><small class="eng-en">${x.en}</small></span></button>`).join('');
+  $('#engineMenu').innerHTML = '<div class="eng-head">Checker 批改引擎</div>' + ENGINES.map(x => `<button type="button" role="menuitemradio" aria-checked="${x.id === e}" class="eng-item ${x.id === e ? 'on' : ''}${WEB && x.id !== 'lt' ? ' off' : ''}" data-eng="${x.id}">
+    <span class="eng-ic">${x.icon}</span><span><b>${x.name}</b>${x.id === e ? ' <span class="eng-cur">✓ 正在用</span>' : ''}<small>${x.zh}</small><small class="eng-en">${x.en}</small>${WEB && x.id !== 'lt' ? '<small class="eng-need">💻 Desktop version only · 只能在电脑版用</small>' : ''}</span></button>`).join('')
+    + (WEB ? `<a class="eng-get" href="${REPO_URL}#readme" target="_blank" rel="noopener">⬇️ Get the free desktop version · 下载电脑版（免费 AI 批改）</a>` : '');
 }
-function renderCheckBtn() { const e = S.settings.gEngine; renderEngineMenu();
+function renderCheckBtn() { const e = gEng(); renderEngineMenu();
   $('#checkBtn').title = 'Check my English before sending · 发送前检查语法 — checker 引擎: ' + (ENGINE_LABEL[e] || e) + '（⚙️ 设置里切换）'; }
 function renderAll() { renderCheckBtn(); document.documentElement.style.setProperty('--scale', S.settings.scale); renderSide(); renderHeader(); renderTimeline(); renderComposer(); }
 function renderHeader() {
@@ -697,7 +706,7 @@ function msgHTML(m) {
   else if (m.tr === '') tr = '';
   else { const hide = toLang === 'zh' && S.settings.hideZh && !m.revealed;
     tr = `<div class="tr ${toLang} ${hide ? 'hidden' : ''}" ${hide ? 'data-act="reveal" title="Tap to show 点击显示"' : ''}><span class="lab">${toLang === 'en' ? 'English' : '中文'}</span><span class="txt">${highlight(m.tr, query)}</span></div>`; }
-  const corrected = m.checking ? `<div class="fix" style="opacity:.7">✍️ checking grammar… 正在检查语法${S.settings.gEngine === 'local' ? '（Qwen3 4B 本地模型，约 20 秒）' : ''}</div>`
+  const corrected = m.checking ? `<div class="fix" style="opacity:.7">✍️ checking grammar… 正在检查语法${gEng() === 'local' ? '（Qwen3 4B 本地模型，约 20 秒）' : ''}</div>`
     : m.corrected ? `<div class="fix"><span class="lab">✔ Corrected · 改正后：</span>${byTag(m)} ${highlight(m.corrected, query)} <button class="icon" data-act="saycorr" title="Listen">🔊</button></div>`
     : m.checked && !(m.marks || []).some(k => k.by === 'auto') ? `<div class="fix" style="font-size:.85em">✔ Grammar OK · 语法没问题</div>` : '';
   // natural version identical to the corrected one: just say so instead of repeating it
@@ -777,8 +786,8 @@ const py = zh => { try { return window.pinyinPro ? pinyinPro.pinyin(zh) : ''; } 
 async function sayInChinese() {
   const text = $('#draft').value.trim(); if (!text) return toast('Type your message in English first');
   if (isZh(text)) return toast('That is already Chinese 已经是中文了');
-  $('#previewTxt').textContent = S.settings.gEngine === 'local' ? 'Thinking… (Qwen3 4B, ~10 s) 正在想中文说法' : 'translating…'; $('#preview').classList.add('show');
-  if (S.settings.gEngine === 'local' && serverOK) {
+  $('#previewTxt').textContent = gEng() === 'local' ? 'Thinking… (Qwen3 4B, ~10 s) 正在想中文说法' : 'translating…'; $('#preview').classList.add('show');
+  if (gEng() === 'local' && serverOK) {
     try { const r = await fetch('/api/local/zh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, context: chatContext(null) }) });
       const j = await r.json(); if (!r.ok) throw new Error(j.error);
       return showPreview(`${j.zh}\n${py(j.zh)}\n💡 ${j.tip_en}`, j.zh, 'zh');
@@ -899,6 +908,7 @@ $('#zhBtn').onclick = sayInChinese;
 const engMenuOpen = open => { $('#engineMenu').classList.toggle('show', open); $('#engineBtn').setAttribute('aria-expanded', open); };
 $('#engineBtn').onclick = e => { e.stopPropagation(); engMenuOpen(!$('#engineMenu').classList.contains('show')); };
 $('#engineMenu').onclick = e => { const b = e.target.closest('[data-eng]'); if (!b) return; e.stopPropagation();
+  if (WEB && b.dataset.eng !== 'lt') { toast('Desktop version only — download it from GitHub · 只能在电脑版使用'); return; }
   S.settings.gEngine = b.dataset.eng; save(); renderCheckBtn(); engMenuOpen(false); toast('Checker 批改引擎: ' + ENGINES.find(x => x.id === b.dataset.eng).name); };
 document.addEventListener('click', () => engMenuOpen(false));
 document.addEventListener('keydown', e => { if (e.key === 'Escape') engMenuOpen(false); });
@@ -988,7 +998,7 @@ $('#search').oninput = e => { query = e.target.value.trim(); renderTimeline(); }
 $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
 $('#settingsBtn').onclick = () => {
   const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillPlaceMenus(); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
-  $('#sGEngine').value = s.gEngine; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
+  $('#sGEngine').value = gEng(); $('#sGEngine').disabled = WEB; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
   $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); $('#settingsDlg').showModal();
 };
 $('#settingsDlg').addEventListener('input', () => {
@@ -997,7 +1007,7 @@ $('#settingsDlg').addEventListener('input', () => {
     s['tz' + k] = c ? $('#sTz' + k).value : ''; s['city' + k] = $('#sCity' + k).value.trim();
   }
   s.hideZh = $('#sHide').checked;
-  s.autoSwitch = $('#sSwitch').checked; s.autoGrammar = $('#sGrammar').checked; s.gEngine = $('#sGEngine').value; s.aiModel = $('#sModel').value; s.engine = $('#sEngine').value; s.rate = +$('#sRate').value; s.scale = +$('#sScale').value; save(); renderAll();
+  s.autoSwitch = $('#sSwitch').checked; s.autoGrammar = $('#sGrammar').checked; if (!WEB) s.gEngine = $('#sGEngine').value; s.aiModel = $('#sModel').value; s.engine = $('#sEngine').value; s.rate = +$('#sRate').value; s.scale = +$('#sScale').value; save(); renderAll();
 });
 speechSynthesis?.addEventListener?.('voiceschanged', () => {});
 
