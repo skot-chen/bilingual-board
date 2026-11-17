@@ -26,7 +26,7 @@
           messages: [...msgs.values()].filter(m => !deleted.has(m.id)).sort((x, y) => x.ts - y.ts),
         });
         if (prev && (prev.metaUpd || 0) > (c.metaUpd || 0)) // title and category: the copy that changed them last wins
-          for (const k of ['title', 'titleSet', 'cat', 'metaUpd']) { if (k in prev) merged[k] = prev[k]; else delete merged[k]; }
+          for (const k of ['title', 'titleZh', 'titleSet', 'cat', 'metaUpd']) { if (k in prev) merged[k] = prev[k]; else delete merged[k]; }
         convs.set(c.id, merged);
       }
     }
