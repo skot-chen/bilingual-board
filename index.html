@@ -974,8 +974,8 @@ function finishMic() {
   MIC.raw = micJoin(MIC.base, rawText.trim());
   $('#draft').value = micJoin(MIC.base, t.text); autoGrow(); renderMic();
   const note = $('#micNote');
-  if (t.text && (t.fillers || t.repeats || t.text !== rawText.trim())) {
-    note.innerHTML = `✨ Tidied 已整理${t.fillers ? ` · ${t.fillers} filler${t.fillers > 1 ? 's' : ''} 语气词` : ''}${t.repeats ? ` · ${t.repeats} repeat${t.repeats > 1 ? 's' : ''} 重复` : ''} · punctuation 标点 <button type="button" id="micUndo">↺ Original 原话</button>`;
+  if (t.text && (t.fillers || t.repeats || t.fixes || t.text !== rawText.trim())) {
+    note.innerHTML = `✨ Tidied 已整理${t.fillers ? ` · ${t.fillers} filler${t.fillers > 1 ? 's' : ''} 语气词` : ''}${t.repeats ? ` · ${t.repeats} repeat${t.repeats > 1 ? 's' : ''} 重复` : ''}${t.fixes ? ` · ${t.fixes} correction${t.fixes > 1 ? 's' : ''} 改口` : ''} · punctuation 标点 <button type="button" id="micUndo">↺ Original 原话</button>`;
     note.hidden = false; $('#micUndo').onclick = () => { $('#draft').value = MIC.raw; autoGrow(); note.hidden = true; $('#draft').focus(); };
   } else note.hidden = true;
   $('#draft').focus(); prepTranslation();
@@ -984,32 +984,37 @@ function renderMic() {
   const b = $('#micBtn'), note = $('#micNote');
   if (MIC.on) { const s = Math.floor((Date.now() - MIC.started) / 1000);
     b.textContent = `⏹ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; b.classList.add('rec'); b.title = 'Stop and tidy the text 停止录音并整理文字';
-    const t = MIC.live || { fillers: 0, repeats: 0 }, done = t.fillers + t.repeats;
-    note.hidden = false; note.innerHTML = '🔴 Listening — pause and think freely, tap ⏹ when you are done · 正在听，可以停顿思考，说完点 ⏹' + (done ? ` <span>· ✨ tidied as you speak 边说边整理：${t.fillers ? t.fillers + ' 语气词 ' : ''}${t.repeats ? t.repeats + ' 重复' : ''}</span>` : ''); }
+    const t = MIC.live || { fillers: 0, repeats: 0, fixes: 0 }, done = t.fillers + t.repeats + (t.fixes || 0);
+    note.hidden = false; note.innerHTML = '🔴 Listening — pause and think freely, tap ⏹ when you are done · 正在听，可以停顿思考，说完点 ⏹' + (done ? ` <span>· ✨ tidied as you speak 边说边整理：${t.fillers ? t.fillers + ' 语气词 ' : ''}${t.repeats ? t.repeats + ' 重复 ' : ''}${t.fixes ? t.fixes + ' 改口' : ''}</span>` : ''); }
   else { b.textContent = '🎤'; b.classList.remove('rec'); b.title = 'Voice input 语音输入'; if (/Listening/.test(note.textContent)) note.hidden = true; }
 }
 function tidySpeech(parts, lang) {
-  const zh = lang.startsWith('zh'); let fillers = 0, repeats = 0;
+  const zh = lang.startsWith('zh'); let fillers = 0, repeats = 0, fixes = 0;
+  const segZh = t => { try { return [...new Intl.Segmenter('zh', { granularity: 'word' }).segment(t)].map(x => x.segment); } catch { return [...t]; } };
+  const collapseZh = s => s
+    .replace(/(我|你|他|她|它|这|那|就|在|要|对)\1+(?=[一-鿿])/g, (m, w) => { repeats++; return w; })   // 我我觉得 → 我觉得
+    .replace(/([一-鿿])\1{2,}/g, (m, w) => { repeats++; return w; })                                      // 对对对 → 对
+    .replace(/([一-鿿]{2,6})\1+/g, (m, w) => { repeats++; return w; });                                   // 我想说我想说 → 我想说
+  const collapseEn = s => s.replace(/\b([a-z']+(?:\s+[a-z']+){0,3})(?:,?\s+\1\b)+/gi, (m, w) => { repeats++; return w; }); // "we can, we can go" → "we can go"
   // 1. clean each phrase (the bits between pauses)
   const clean = parts.map(p => String(p || '').trim()).filter(Boolean).map(p => {
     let s = p;
     if (zh) {
-      s = s.replace(/\s+/g, '');
-      s = s.replace(/(那个){2,}|(就是说?){2,}/g, m => { repeats++; return m.startsWith('那') ? '那个' : '就是'; });
-      s = s.replace(/([一-鿿])\1{2,}/g, (m, w) => { repeats++; return w; });          // 我我我 → 我
-      s = s.replace(/([一-鿿]{2,3})\1+/g, (m, w) => { repeats++; return w; });        // 我们我们 → 我们
-      s = s.replace(/^(嗯|呃|额|啊|哦|噢|呢|唉|诶|那个|然后呢|就是说?)+/, () => { fillers++; return ''; });
+      s = collapseZh(s.replace(/\s+/g, ''));
+      s = s.replace(/^(嗯|呃|额|啊|哦|噢|呢|唉|诶|那个|这个|那么|然后呢|就是说?)+/, () => { fillers++; return ''; });
       s = s.replace(/(嗯+|呃+|额+)/g, () => { fillers++; return ''; });
+      s = s.replace(/^(对|好|行)(?=(然后|那|我|你|就|所以))/, '$1，'); // 对对对然后… → 对，然后…
     } else {
       s = s.replace(/\b(um+|uh+|uhm+|erm+|er|ah+|hmm+|mm+)\b[,.]?\s*/gi, () => { fillers++; return ''; });
-      s = s.replace(/\b([a-z']+)(\s+\1\b)+/gi, (m, w) => { repeats++; return w; });            // "I I think" → "I think"
-      s = s.replace(/\s{2,}/g, ' ').replace(/\bi\b/g, 'I').trim();
+      s = s.replace(/^((you know|so like|like|well|okay so|ok so),?\s+)+/i, () => { fillers++; return ''; });
+      s = s.replace(/,?\s*\byou know\b\s*(?=,|$)/gi, () => { fillers++; return ''; }).replace(/,\s*like,\s*/gi, () => { fillers++; return ' '; });
+      s = collapseEn(s).replace(/\s{2,}/g, ' ').replace(/\bi\b/g, 'I').trim();
     }
     return s;
   }).filter(s => s && !/^[。？.?,，]$/.test(s));
-  // 2. a short pause in the middle of a sentence is not a sentence end: join phrases that clearly go on
-  const goesOnEn = /^(and|but|so|or|because|then|which|that|to|at|in|on|for|with|of|from|about|if|when|until|like|as|than|after|before|by)\b/i;
-  const goesOnZh = /^(然后|而且|但是|可是|所以|因为|还有|还是|或者|就|也|还|和|跟|在|到|给|把|的|了|吧|呢|吗)/;
+  // 2. a short pause in the middle of a sentence is not a sentence end: join phrases that clearly go on (a change of mind too)
+  const goesOnEn = /^(and|but|so|or|because|then|which|that|to|at|in|on|for|with|of|from|about|if|when|until|like|as|than|after|before|by|i mean|no wait|wait no|or rather|oops)\b/i;
+  const goesOnZh = /^(然后|而且|但是|可是|所以|因为|还有|还是|或者|就|也|还|和|跟|在|到|给|把|的|了|吧|呢|吗|不对|不是|说错了|哦不|啊不|我是说|应该是)/;
   const sentences = [];
   for (const s of clean) {
     const prev = sentences.at(-1), words = prev ? (zh ? prev.length : prev.split(/\s+/).length) : 0;
@@ -1017,13 +1022,46 @@ function tidySpeech(parts, lang) {
     if (goesOn) sentences[sentences.length - 1] = zh ? prev + (/^(吧|呢|吗|了|的)/.test(s) ? '' : '，') + s : prev + ' ' + s;
     else sentences.push(s);
   }
-  // 3. capital letter, then "." or "?" (Chinese "。" or "？") at the end of each sentence
-  const out = sentences.map(s => {
-    if (zh) return /[。！？!?…]$/.test(s) ? s : s.replace(/[，,]$/, '') + (/(吗|呢|吧|么|什么|怎么样?|哪儿?|哪里|几点|谁|多少|是不是|对不对|好不好|行不行|可不可以|有没有)$/.test(s) ? '？' : '。');
+  // 3. changes of mind: keep what was meant ("周六，不对，周日" → "周日"; "at six, I mean seven" → "at seven")
+  const NUM_ZH = /([0-9０-９一二三四五六七八九十两半几]+[点号月日天个岁块分钟小时]*)$/, DAY_ZH = /((周|星期|礼拜)[一二三四五六日天])$/;
+  const fixZh = s => { for (let g = 0; g < 3; g++) {
+    const m = s.match(/[，,]?(不对不对|不对|不是不是|说错了|哦不|啊不|我是说|应该是)[，,]?/); if (!m) break;
+    const before = s.slice(0, m.index).replace(/[，,]$/, ''), after = s.slice(m.index + m[0].length); fixes++;
+    if (!before || !after) { s = before + after; continue; }
+    let cp = 0; while (cp < before.length && before[cp] === after[cp]) cp++;
+    if (cp >= 2) { s = after; continue; }                                                       // said the whole thing again
+    if (DAY_ZH.test(before) && /^(周|星期|礼拜)?[一二三四五六日天]/.test(after)) { s = before.replace(DAY_ZH, '') + after; continue; }
+    if (NUM_ZH.test(before) && /^[0-9０-９一二三四五六七八九十两半几]/.test(after)) { s = before.replace(NUM_ZH, '') + after; continue; }
+    const first = segZh(after)[0] || '', at = first.length > 0 ? before.lastIndexOf(first) : -1;
+    if (at >= 0 && first.length >= 1 && /[一-鿿]/.test(first)) { s = before.slice(0, at) + after; continue; } // 买苹果，不对，买橘子
+    if (after.replace(/[。？！，]/g, '').length <= 4) { const bw = segZh(before); let take = 0; while (bw.length && take < Math.max(1, segZh(after)[0].length)) take += bw.pop().length; s = bw.join('') + after; continue; }
+    s = before + '，' + after;                                                                   // not sure what was replaced: keep both
+  } return collapseZh(s); };
+  const NUMW = '(?:\\d+(?::\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|noon|midnight)(?:\\s*(?:am|pm|o\'clock|thirty|fifteen|forty-five))?';
+  const DAYW = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight|yesterday|january|february|march|april|may|june|july|august|september|october|november|december)';
+  const fixEn = s => { for (let g = 0; g < 3; g++) {
+    const m = s.match(/,?\s*\b(i mean|no wait|wait no|or rather|oops)\b,?\s*/i); if (!m) break;
+    const before = s.slice(0, m.index).trim(), after = s.slice(m.index + m[0].length).trim(); fixes++;
+    if (!before || !after) { s = (before + ' ' + after).trim(); continue; }
+    const bw = before.split(/\s+/), aw = after.split(/\s+/), low = w => w.toLowerCase().replace(/[^a-z0-9':]/g, '');
+    if (bw.length >= 2 && aw.length >= 2 && low(bw[0]) === low(aw[0]) && low(bw[1]) === low(aw[1])) { s = after; continue; } // started again
+    const kind = re => new RegExp('^' + re + '\\b', 'i'), endKind = re => new RegExp('\\b' + re + '$', 'i');
+    if (kind(NUMW).test(after) && endKind(NUMW).test(before)) { s = before.replace(endKind(NUMW), '').trim() + ' ' + after; continue; }
+    if (kind(DAYW).test(after) && endKind(DAYW).test(before)) { s = before.replace(endKind(DAYW), '').trim() + ' ' + after; continue; }
+    const at = bw.map(low).lastIndexOf(low(aw[0]));
+    if (aw.length >= 2 && at >= 0) { s = bw.slice(0, at).concat(aw).join(' '); continue; }     // "at six, I mean at seven"
+    if (aw.length <= 2 && !EN_STOP.has(low(bw.at(-1)))) { s = bw.slice(0, -1).concat(aw).join(' '); continue; } // "apples, I mean oranges"
+    s = before + ' ' + after;                                                                    // "it's, I mean, really good": just drop "I mean"
+  } return collapseEn(s); };
+  // 4. capital letter, then "." or "?" (Chinese "。" or "？") at the end of each sentence
+  const out = sentences.map(s => zh ? fixZh(s) : fixEn(s)).filter(Boolean).map(s => {
+    if (zh) { if (/[。！？!?…]$/.test(s)) return s; s = s.replace(/[，,]$/, '');
+      const ask = /(吗|呢)$|(?<![什怎这那多])么$/.test(s) || (/(什么|怎么|为什么|哪儿|哪里|哪个|哪天|几点|几个|谁|多少|是不是|对不对|好不好|行不行|能不能|要不要|可不可以|有没有)/.test(s) && !/(不知道|不确定|不清楚|随便|都可以|无论|不管)/.test(s));
+      return s + (ask ? '？' : '。'); }
     s = s[0].toUpperCase() + s.slice(1);
     return /[.!?…]$/.test(s) ? s : s.replace(/,$/, '') + (/^(what|where|when|why|how|who|whose|which|do|does|did|is|are|was|were|can|could|would|will|should|shall|may|have|has|am|isn't|aren't|don't|didn't|won't|can't)\b/i.test(s) ? '?' : '.');
   });
-  return { text: zh ? out.join('') : out.join(' '), fillers, repeats };
+  return { text: zh ? out.join('') : out.join(' '), fillers, repeats, fixes };
 }
 
 // ---------- helpers ----------
