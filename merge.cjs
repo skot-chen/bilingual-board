@@ -2,7 +2,8 @@
 // Used by the page (browser copy vs saved file) and by the server (incoming save vs file on disk),
 // so a fresh/empty browser can never wipe saved chats. Deletions are remembered in `deleted`.
 (function (root) {
-  const stamp = m => Math.max(m.ts || 0, m.edited || 0, m.checked || 0, ...(m.marks || []).map(k => k.ts || 0));
+  // a message's latest change wins (sent, edited, checked, marked, or "keep my wording")
+  const stamp = m => Math.max(m.ts || 0, m.edited || 0, m.checked || 0, m.keep || 0, ...(m.marks || []).map(k => k.ts || 0));
 
   function mergeBoard(a, b) {
     if (!b || !Array.isArray(b.conversations)) return a;
