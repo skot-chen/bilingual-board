@@ -353,6 +353,13 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
 
 <dialog id="picDlg"><form method="dialog"><button style="all:unset;cursor:zoom-out;display:block"><img id="picBig" alt=""></button></form></dialog>
 
+<dialog id="lockDlg"><form method="dialog">
+  <h2>✏️ Title set by hand · 这个标题是手动设置的</h2>
+  <p id="lockCur" style="font-weight:600"></p>
+  <p class="muted-s">Replace it with a summary of the latest chat? You can also edit it yourself.<br>要用最近聊天的自动总结替换它吗？也可以自己去修改。</p>
+  <div class="dlg-acts"><button value="cancel">Keep 保留</button><button type="button" id="lockEdit">✏️ Edit title 去修改</button><button type="button" id="lockReplace" class="primary">🔄 Replace 替换</button></div>
+</form></dialog>
+
 <dialog id="convDlg"><form method="dialog">
   <h2>Chat title & category · 对话标题和分类</h2>
   <label for="cTitle">Title 标题</label><input type="text" id="cTitle" maxlength="60">
@@ -439,9 +446,10 @@ async function summaryTitle(c) {
   return en || zh ? { en: en || zh, zh: en ? zh : '' } : null;
 }
 async function refreshTitle(c, apply) {
-  const t = await summaryTitle(c);
+  if (apply) { toast('🔄 Summarizing… 正在总结'); $('#titleRefresh').disabled = true; }
+  const t = await summaryTitle(c).finally(() => { $('#titleRefresh').disabled = false; });
   if (!t) { toast('Not enough chat to summarize yet 聊天内容还不够'); return null; }
-  if (apply) { c.title = t.en; c.titleZh = t.zh; c.titleSet = true; c.metaUpd = Date.now(); save(); renderSide(); renderHeader();
+  if (apply) { c.title = t.en; c.titleZh = t.zh; c.titleSet = true; c.titleBy = 'auto'; c.metaUpd = Date.now(); save(); renderSide(); renderHeader();
     toast('🔄 ' + t.en + (t.zh ? ' · ' + t.zh : '')); }
   return t;
 }
@@ -490,14 +498,20 @@ $('#cCats').onclick = e => { const b = e.target.closest('[data-cat]'); if (!b) r
 $('#cRefresh').onclick = async () => { const c = S.conversations.find(c => c.id === convEditId); if (!c) return;
   $('#cRefresh').disabled = true; const t = await refreshTitle(c, false); $('#cRefresh').disabled = false;
   if (t) { $('#cTitle').value = t.en; $('#cTitle').dataset.en = t.en; $('#cTitle').dataset.zh = t.zh; $('#cTitleHint').textContent = t.zh ? '中文: ' + t.zh : ''; } };
-$('#titleRefresh').onclick = () => refreshTitle(conv(), true);
+// a title typed by hand is never replaced without asking
+const isManualTitle = c => !!c.titleSet && c.titleBy !== 'auto';
+$('#titleRefresh').onclick = () => { const c = conv();
+  if (!isManualTitle(c)) return refreshTitle(c, true);
+  $('#lockCur').textContent = '“' + c.title + '”' + (c.titleZh ? ' · ' + c.titleZh : ''); $('#lockDlg').showModal(); };
+$('#lockReplace').onclick = () => { $('#lockDlg').close(); refreshTitle(conv(), true); };
+$('#lockEdit').onclick = () => { $('#lockDlg').close(); openConvDlg(conv().id); };
 $('#cSave').onclick = () => { const c = S.conversations.find(c => c.id === convEditId); if (!c) return;
   const t = $('#cTitle').value.trim();
-  if (t) { if (t !== c.title) c.titleZh = t === $('#cTitle').dataset.en ? $('#cTitle').dataset.zh : ''; c.title = t; c.titleSet = true; } else if (c.titleSet) { c.titleSet = false; c.title = newConv().title.replace(/^Chat .*/, 'Chat ' + new Date(c.created || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + new Date(c.created || Date.now()).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })); }
+  if (t) { if (t !== c.title) { const fromSummary = t === $('#cTitle').dataset.en; c.titleZh = fromSummary ? $('#cTitle').dataset.zh : ''; c.titleBy = fromSummary ? 'auto' : 'manual'; } c.title = t; c.titleSet = true; } else if (c.titleSet) { c.titleSet = false; c.title = newConv().title.replace(/^Chat .*/, 'Chat ' + new Date(c.created || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + new Date(c.created || Date.now()).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })); }
   c.cat = $('#cCats').dataset.sel === guessCat(c) && !c.cat ? undefined : $('#cCats').dataset.sel; c.metaUpd = Date.now();
   save(); $('#convDlg').close(); renderSide(); renderHeader(); };
 $('#cAuto').onclick = () => { const c = S.conversations.find(c => c.id === convEditId); if (!c) return;
-  delete c.cat; delete c.titleZh; if (c.titleSet) { c.titleSet = false; c.title = 'Chat ' + new Date(c.created || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + new Date(c.created || Date.now()).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
+  delete c.cat; delete c.titleZh; delete c.titleBy; if (c.titleSet) { c.titleSet = false; c.title = 'Chat ' + new Date(c.created || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + new Date(c.created || Date.now()).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
   c.metaUpd = Date.now(); save(); $('#convDlg').close(); renderSide(); renderHeader(); };
 function newConv(title) { const d = new Date(); return { id: uid(), title: title || 'Chat ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), created: Date.now(), messages: [] }; }
 // Web version (GitHub Pages, or ?web): no local server — chats stay in this browser, only the online LanguageTool checker works.
@@ -917,6 +931,7 @@ function renderCheckBtn() { const e = gEng(); renderEngineMenu();
 function renderAll() { renderCheckBtn(); document.documentElement.style.setProperty('--scale', S.settings.scale); renderSide(); renderHeader(); renderTimeline(); renderComposer(); }
 function renderHeader() {
   const c = conv(), t = convTitle(c); $('#title').textContent = catById(convCat(c)).ic + ' ' + t.en;
+  $('#titleRefresh').title = isManualTitle(c) ? 'Title set by hand — asks before replacing it · 手动标题，替换前会先问你' : 'Update the title from the latest chat · 根据最近的聊天更新标题';
   const today = new Date().toDateString();
   const n = S.conversations.flatMap(c => c.messages).filter(m => m.speaker === 'A' && m.lang === 'en' && new Date(m.ts).toDateString() === today).length;
   $('#stats').textContent = `${S.settings.nameA}: ${n} English msg today · 今天英文 ${n} 句`;
