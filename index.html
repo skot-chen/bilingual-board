@@ -406,6 +406,7 @@ dialog{overflow-x:hidden}
   <div class="field"><label for="sRate">Speech speed 朗读语速</label><input type="range" id="sRate" min="0.5" max="1.3" step="0.05" hidden><div class="stepper" data-for="sRate" data-presets="0.6,0.75,0.85,1,1.15"></div></div>
   <div class="field"><label for="sVoiceEn">English voice 英文声音 <small>(this device 本设备)</small></label><select id="sVoiceEn"></select></div>
   <div class="field"><label for="sVoiceZh">Chinese voice 中文声音 <small>(this device 本设备)</small></label><select id="sVoiceZh"></select></div>
+  <div class="field"><span>Version 版本 <small id="verDate"></small></span><button type="button" id="verCheck">🔄 Check for update 检查更新</button></div>
   <div class="field"><label for="sScale">Text size 字号</label><input type="range" id="sScale" min="0.85" max="1.6" step="0.05" hidden><div class="stepper" data-for="sScale" data-presets="0.9,1,1.15,1.3,1.5"></div></div>
   <fieldset class="ai-box" id="syncBox"><legend>☁ Sync 同步 · GitHub</legend>
     <div class="field"><small>Save the chats to your own <b>private</b> GitHub repository, so every device shows the same chats.<br>把聊天记录存到你自己的<b>私有</b> GitHub 仓库，手机、电脑打开都能看到同样的聊天。</small></div>
@@ -2116,16 +2117,23 @@ if (GH.token) setTimeout(ghSync, 500);
 // New version check: an app on the phone's home screen has no reload button, so when the web page is updated
 // (the server's Last-Modified changes) a small bar offers to reload. The desktop server sends no date, so it is skipped.
 const PAGE_DATE = Date.parse(document.lastModified) || 0; let verChecked = 0;
+// The ?v= makes GitHub's web cache ask for a fresh answer (otherwise it can repeat the old date for up to 10 minutes).
+// Returns true (newer online), false (up to date) or null (could not tell: offline, or the desktop server).
 async function checkNewVersion(force) {
-  if (!PAGE_DATE || (!force && Date.now() - verChecked < 5 * 60e3)) return; verChecked = Date.now();
-  try { const r = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' }); const lm = Date.parse(r.headers.get('last-modified') || '');
-    if (r.ok && lm && lm - PAGE_DATE > 2000) $('#newVer').hidden = false; } catch {}
+  if (!PAGE_DATE || (!force && Date.now() - verChecked < 60e3)) return null; verChecked = Date.now();
+  try { const r = await fetch(location.pathname + '?v=' + Date.now(), { method: 'HEAD', cache: 'no-store' }); const lm = Date.parse(r.headers.get('last-modified') || '');
+    if (!r.ok || !lm) return null;
+    if (lm - PAGE_DATE > 2000) { $('#newVer').hidden = false; return true; } return false; } catch { return null; }
 }
 // Update: first fetch fresh copies past the browser cache (GitHub Pages lets phones keep a page 10 minutes),
 // otherwise the reload could show the old version again.
 $('#newVerGo').onclick = async () => { $('#newVerGo').disabled = true;
   try { await Promise.all([location.pathname, 'merge.cjs?v=2', 'manifest.json'].map(u => fetch(u, { cache: 'reload' }))); } catch {}
   location.reload(); };
+$('#verDate').textContent = PAGE_DATE ? new Date(PAGE_DATE).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '';
+$('#verCheck').onclick = async () => { const b = $('#verCheck'); b.disabled = true; const r = await checkNewVersion(true); b.disabled = false;
+  if (r) { toast('New version 有新版本 — updating 正在更新'); $('#newVerGo').click(); }
+  else toast(r === false ? 'Up to date 已是最新版本 ✓' : 'Could not check 无法检查（离线或电脑版）'); };
 $('#newVerLater').onclick = () => { $('#newVer').hidden = true; };
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNewVersion(); });
 addEventListener('pageshow', e => { if (e.persisted) checkNewVersion(true); }); // phone brings back a page kept in memory
