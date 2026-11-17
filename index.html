@@ -133,7 +133,7 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .quote.A{border-left-color:var(--a)}.quote.B{border-left-color:var(--b)}
 .quote b{font-size:.92em}.quote .qt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
 .quote .qtr{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:.92em}
-.unread{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:#dc2626;color:#fff;font-weight:700;font-size:.85em;text-align:center}
+.unread{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:#d97706;color:#fff;font-weight:700;font-size:.85em;text-align:center}
 .evline{text-align:center;font-size:.8em;color:var(--muted);margin:6px auto;max-width:90%}.evline button{font-size:1em}
 .seen{text-align:right;font-size:.75em;color:var(--muted);margin:-2px 52px 6px}.seen.l{text-align:left}
 .trash-btn{margin-top:8px;width:100%;text-align:left;font-size:.85em}.trash-btn .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-left:4px}
@@ -644,7 +644,7 @@ function updateBadge() {
   if (!n) { link.href = 'icon.svg'; return; }
   const draw = () => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d');
     x.drawImage(badgeImg, 0, 0, 64, 64); const t = n > 99 ? '99+' : String(n);
-    x.fillStyle = '#dc2626'; x.beginPath(); x.arc(44, 20, 20, 0, 7); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.arc(44, 20, 22, 0, 7); x.fill(); x.fillStyle = '#d97706'; x.beginPath(); x.arc(44, 20, 19, 0, 7); x.fill();
     x.fillStyle = '#fff'; x.font = 'bold ' + (t.length > 2 ? 18 : t.length > 1 ? 24 : 30) + 'px Arial,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(t, 44, 22);
     link.href = cv.toDataURL('image/png'); };
   if (badgeImg) return draw(); badgeImg = new Image(); badgeImg.onload = draw; badgeImg.src = 'icon.svg';
