@@ -940,7 +940,7 @@ const SRclass = () => self.SpeechRecognition || self.webkitSpeechRecognition;
 function toggleMic() {
   if (!SRclass()) return toast('Voice input needs Chrome or Edge 语音输入需要 Chrome 或 Edge');
   if (MIC.on) return stopMic();
-  Object.assign(MIC, { on: true, base: $('#draft').value.trim(), parts: [], interim: '', started: Date.now(), raw: '' });
+  Object.assign(MIC, { on: true, base: $('#draft').value.trim(), parts: [], interim: '', started: Date.now(), raw: '', live: null });
   startRec(); renderMic(); clearInterval(MIC.timer); MIC.timer = setInterval(renderMic, 500);
 }
 function startRec() {
@@ -954,8 +954,17 @@ function startRec() {
   try { r.start(); } catch {}
 }
 const micJoin = (a, b) => !a ? b : !b ? a : a + (/[㐀-鿿]$/.test(a) || /^[㐀-鿿]/.test(b) ? '' : ' ') + b;
-function showMicDraft() { const heard = (micLang.startsWith('zh') ? MIC.parts.join('') : MIC.parts.join(' ')) + (MIC.interim ? ' ' + MIC.interim : '');
-  $('#draft').value = micJoin(MIC.base, heard.trim()); autoGrow(); }
+// tidied while you speak: finished phrases are cleaned up at once, the words still being heard follow as they are
+function showMicDraft() {
+  const zh = micLang.startsWith('zh'), t = tidySpeech(MIC.parts, micLang); MIC.live = t;
+  let heard = t.text, now = MIC.interim.trim().replace(zh ? /^(嗯|呃|额|啊|哦|那个)+/ : /^((um+|uh+|uhm+|erm+|er|ah+|hmm+)\b[,.]?\s*)+/i, '');
+  if (now) { // the phrase still being heard: it may join the last sentence, so open that sentence up again
+    if (heard && (zh ? /^(然后|而且|但是|可是|所以|因为|还有|还是|或者|就|也|还|和|跟|在|到|给|把)/ : /^(and|but|so|or|because|then|which|that|to|at|in|on|for|with|of|from|about|if|when|until|like|as|than|after|before|by)\b/i).test(now))
+      heard = heard.replace(zh ? /[。？]$/ : /[.?]$/, zh ? '，' : '');
+    heard = zh ? heard + now : (heard ? heard + ' ' : '') + now;
+  }
+  $('#draft').value = micJoin(MIC.base, heard.trim()); autoGrow(); renderMic();
+}
 function stopMic() { MIC.on = false; clearInterval(MIC.timer); if (rec) { try { rec.stop(); } catch { finishMic(); } } else finishMic(); }
 function finishMic() {
   if (MIC.started === 0) return; // already finished
@@ -975,7 +984,8 @@ function renderMic() {
   const b = $('#micBtn'), note = $('#micNote');
   if (MIC.on) { const s = Math.floor((Date.now() - MIC.started) / 1000);
     b.textContent = `⏹ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; b.classList.add('rec'); b.title = 'Stop and tidy the text 停止录音并整理文字';
-    note.hidden = false; note.innerHTML = '🔴 Listening — pause and think freely, tap ⏹ when you are done · 正在听，可以停顿思考，说完点 ⏹'; }
+    const t = MIC.live || { fillers: 0, repeats: 0 }, done = t.fillers + t.repeats;
+    note.hidden = false; note.innerHTML = '🔴 Listening — pause and think freely, tap ⏹ when you are done · 正在听，可以停顿思考，说完点 ⏹' + (done ? ` <span>· ✨ tidied as you speak 边说边整理：${t.fillers ? t.fillers + ' 语气词 ' : ''}${t.repeats ? t.repeats + ' 重复' : ''}</span>` : ''); }
   else { b.textContent = '🎤'; b.classList.remove('rec'); b.title = 'Voice input 语音输入'; if (/Listening/.test(note.textContent)) note.hidden = true; }
 }
 function tidySpeech(parts, lang) {
