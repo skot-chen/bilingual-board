@@ -25,8 +25,10 @@
         const merged = Object.assign({}, prev, c, {
           messages: [...msgs.values()].filter(m => !deleted.has(m.id)).sort((x, y) => x.ts - y.ts),
         });
-        if (prev && (prev.metaUpd || 0) > (c.metaUpd || 0)) // title and category: the copy that changed them last wins
-          for (const k of ['title', 'titleZh', 'titleBy', 'titleSet', 'cat', 'pin', 'metaUpd']) { if (k in prev) merged[k] = prev[k]; else delete merged[k]; }
+        // title, category and pin: take them exactly from the copy that changed them last — including ones it removed
+        // (an unpinned chat has no `pin`; copying the other copy first must not bring the old pin back)
+        const metaSrc = prev && (prev.metaUpd || 0) > (c.metaUpd || 0) ? prev : c;
+        for (const k of ['title', 'titleZh', 'titleBy', 'titleSet', 'cat', 'pin', 'metaUpd']) { if (k in metaSrc) merged[k] = metaSrc[k]; else delete merged[k]; }
         convs.set(c.id, merged);
       }
     }
