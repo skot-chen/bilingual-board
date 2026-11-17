@@ -158,6 +158,10 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .eng-item.off{opacity:.55}.eng-need{display:block;color:#b45309}.eng-get{display:block;padding:8px 10px;font-size:.85em;text-decoration:none;border-top:1px solid rgba(127,127,127,.25)}
 @media (max-width:600px){.row:has(> #checkBtn){flex-wrap:wrap;row-gap:6px}}
 [hidden]{display:none!important}
+.mic-note{font-size:.8em;color:var(--muted);margin:0 0 6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mic-note button{font-size:.95em;padding:1px 8px;border-radius:999px}
+#micBtn.rec{background:#dc2626;color:#fff;border-color:#dc2626;animation:micpulse 1.4s infinite;font-variant-numeric:tabular-nums}
+@keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
 .title-refresh{font-size:.8em;font-weight:600;padding:4px 10px;border-radius:999px;border:1.5px solid var(--a);color:var(--a);background:var(--a-soft);white-space:nowrap;cursor:pointer}
 .title-refresh:hover{background:var(--a);color:#fff}.title-refresh:disabled{opacity:.6;cursor:wait}
 .title-refresh .tr-short{display:none}
@@ -290,6 +294,7 @@ header .search{flex-shrink:6;min-width:90px}
       <div class="who" id="who"></div>
       <div class="phrases" id="phrases"></div>
       <div class="attach" id="attach"></div>
+      <div class="mic-note" id="micNote" hidden aria-live="polite"></div>
       <div class="draft-wrap">
         <textarea id="draft" rows="2" placeholder="Type in English or 中文… (Enter = send, Shift+Enter = new line)"></textarea>
       </div>
@@ -919,18 +924,90 @@ function speak(text, lang) {
     || speechSynthesis.getVoices().find(v => v.lang.replace('_', '-').startsWith(u.lang.slice(0, 2)));
   if (v) u.voice = v; speechSynthesis.speak(u);
 }
+// ---------- voice input: keeps listening through pauses until you tap ⏹, then tidies the text ----------
+// Each pause ends a phrase; when you stop, fillers (um, 嗯, 那个…) and stuttered repeats are removed and every phrase
+// gets a full stop or question mark. "↺ Original" brings back exactly what was heard.
 let rec = null, micLang = 'en-US';
+const MIC = { on: false, base: '', parts: [], interim: '', started: 0, timer: 0, raw: '' };
 function setMicLang(l) { micLang = l; document.querySelectorAll('#micLang [data-ml]').forEach(b => { b.classList.toggle('on', b.dataset.ml === l); b.setAttribute('aria-pressed', b.dataset.ml === l); }); }
+const SRclass = () => self.SpeechRecognition || self.webkitSpeechRecognition;
 function toggleMic() {
-  const SR = self.SpeechRecognition || self.webkitSpeechRecognition;
-  if (!SR) return toast('Voice input needs Chrome or Edge');
-  if (rec) { rec.stop(); return; }
-  rec = new SR(); rec.lang = micLang; rec.interimResults = true; rec.continuous = false;
-  const base = $('#draft').value ? $('#draft').value + ' ' : '';
-  rec.onresult = e => { $('#draft').value = base + [...e.results].map(r => r[0].transcript).join(''); autoGrow(); };
-  rec.onend = () => { rec = null; $('#micBtn').textContent = '🎤'; };
-  rec.onerror = e => toast('Mic: ' + e.error);
-  rec.start(); $('#micBtn').textContent = '⏺';
+  if (!SRclass()) return toast('Voice input needs Chrome or Edge 语音输入需要 Chrome 或 Edge');
+  if (MIC.on) return stopMic();
+  Object.assign(MIC, { on: true, base: $('#draft').value.trim(), parts: [], interim: '', started: Date.now(), raw: '' });
+  startRec(); renderMic(); clearInterval(MIC.timer); MIC.timer = setInterval(renderMic, 500);
+}
+function startRec() {
+  const r = new (SRclass())(); rec = r; r.lang = micLang; r.interimResults = true; r.continuous = true;
+  r.onresult = e => { let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) { const x = e.results[i]; if (x.isFinal) MIC.parts.push(x[0].transcript); else interim += x[0].transcript; }
+    MIC.interim = interim; showMicDraft(); };
+  r.onend = () => { if (rec === r) rec = null; if (MIC.on) { try { startRec(); } catch { finishMic(); } } else finishMic(); }; // the browser stops after a long silence: start again
+  r.onerror = e => { if (e.error === 'no-speech' || e.error === 'aborted') return;
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { toast('Microphone not allowed 麦克风没有权限'); MIC.on = false; } else toast('Mic: ' + e.error); };
+  try { r.start(); } catch {}
+}
+const micJoin = (a, b) => !a ? b : !b ? a : a + (/[㐀-鿿]$/.test(a) || /^[㐀-鿿]/.test(b) ? '' : ' ') + b;
+function showMicDraft() { const heard = (micLang.startsWith('zh') ? MIC.parts.join('') : MIC.parts.join(' ')) + (MIC.interim ? ' ' + MIC.interim : '');
+  $('#draft').value = micJoin(MIC.base, heard.trim()); autoGrow(); }
+function stopMic() { MIC.on = false; clearInterval(MIC.timer); if (rec) { try { rec.stop(); } catch { finishMic(); } } else finishMic(); }
+function finishMic() {
+  if (MIC.started === 0) return; // already finished
+  if (MIC.interim.trim()) MIC.parts.push(MIC.interim); MIC.interim = ''; MIC.started = 0; MIC.on = false; clearInterval(MIC.timer);
+  const rawText = micLang.startsWith('zh') ? MIC.parts.join('') : MIC.parts.join(' ');
+  const t = tidySpeech(MIC.parts, micLang);
+  MIC.raw = micJoin(MIC.base, rawText.trim());
+  $('#draft').value = micJoin(MIC.base, t.text); autoGrow(); renderMic();
+  const note = $('#micNote');
+  if (t.text && (t.fillers || t.repeats || t.text !== rawText.trim())) {
+    note.innerHTML = `✨ Tidied 已整理${t.fillers ? ` · ${t.fillers} filler${t.fillers > 1 ? 's' : ''} 语气词` : ''}${t.repeats ? ` · ${t.repeats} repeat${t.repeats > 1 ? 's' : ''} 重复` : ''} · punctuation 标点 <button type="button" id="micUndo">↺ Original 原话</button>`;
+    note.hidden = false; $('#micUndo').onclick = () => { $('#draft').value = MIC.raw; autoGrow(); note.hidden = true; $('#draft').focus(); };
+  } else note.hidden = true;
+  $('#draft').focus(); prepTranslation();
+}
+function renderMic() {
+  const b = $('#micBtn'), note = $('#micNote');
+  if (MIC.on) { const s = Math.floor((Date.now() - MIC.started) / 1000);
+    b.textContent = `⏹ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; b.classList.add('rec'); b.title = 'Stop and tidy the text 停止录音并整理文字';
+    note.hidden = false; note.innerHTML = '🔴 Listening — pause and think freely, tap ⏹ when you are done · 正在听，可以停顿思考，说完点 ⏹'; }
+  else { b.textContent = '🎤'; b.classList.remove('rec'); b.title = 'Voice input 语音输入'; if (/Listening/.test(note.textContent)) note.hidden = true; }
+}
+function tidySpeech(parts, lang) {
+  const zh = lang.startsWith('zh'); let fillers = 0, repeats = 0;
+  // 1. clean each phrase (the bits between pauses)
+  const clean = parts.map(p => String(p || '').trim()).filter(Boolean).map(p => {
+    let s = p;
+    if (zh) {
+      s = s.replace(/\s+/g, '');
+      s = s.replace(/(那个){2,}|(就是说?){2,}/g, m => { repeats++; return m.startsWith('那') ? '那个' : '就是'; });
+      s = s.replace(/([一-鿿])\1{2,}/g, (m, w) => { repeats++; return w; });          // 我我我 → 我
+      s = s.replace(/([一-鿿]{2,3})\1+/g, (m, w) => { repeats++; return w; });        // 我们我们 → 我们
+      s = s.replace(/^(嗯|呃|额|啊|哦|噢|呢|唉|诶|那个|然后呢|就是说?)+/, () => { fillers++; return ''; });
+      s = s.replace(/(嗯+|呃+|额+)/g, () => { fillers++; return ''; });
+    } else {
+      s = s.replace(/\b(um+|uh+|uhm+|erm+|er|ah+|hmm+|mm+)\b[,.]?\s*/gi, () => { fillers++; return ''; });
+      s = s.replace(/\b([a-z']+)(\s+\1\b)+/gi, (m, w) => { repeats++; return w; });            // "I I think" → "I think"
+      s = s.replace(/\s{2,}/g, ' ').replace(/\bi\b/g, 'I').trim();
+    }
+    return s;
+  }).filter(s => s && !/^[。？.?,，]$/.test(s));
+  // 2. a short pause in the middle of a sentence is not a sentence end: join phrases that clearly go on
+  const goesOnEn = /^(and|but|so|or|because|then|which|that|to|at|in|on|for|with|of|from|about|if|when|until|like|as|than|after|before|by)\b/i;
+  const goesOnZh = /^(然后|而且|但是|可是|所以|因为|还有|还是|或者|就|也|还|和|跟|在|到|给|把|的|了|吧|呢|吗)/;
+  const sentences = [];
+  for (const s of clean) {
+    const prev = sentences.at(-1), words = prev ? (zh ? prev.length : prev.split(/\s+/).length) : 0;
+    const goesOn = prev && (zh ? goesOnZh.test(s) || words < 5 : goesOnEn.test(s) || words < 4);
+    if (goesOn) sentences[sentences.length - 1] = zh ? prev + (/^(吧|呢|吗|了|的)/.test(s) ? '' : '，') + s : prev + ' ' + s;
+    else sentences.push(s);
+  }
+  // 3. capital letter, then "." or "?" (Chinese "。" or "？") at the end of each sentence
+  const out = sentences.map(s => {
+    if (zh) return /[。！？!?…]$/.test(s) ? s : s.replace(/[，,]$/, '') + (/(吗|呢|吧|么|什么|怎么样?|哪儿?|哪里|几点|谁|多少|是不是|对不对|好不好|行不行|可不可以|有没有)$/.test(s) ? '？' : '。');
+    s = s[0].toUpperCase() + s.slice(1);
+    return /[.!?…]$/.test(s) ? s : s.replace(/,$/, '') + (/^(what|where|when|why|how|who|whose|which|do|does|did|is|are|was|were|can|could|would|will|should|shall|may|have|has|am|isn't|aren't|don't|didn't|won't|can't)\b/i.test(s) ? '?' : '.');
+  });
+  return { text: zh ? out.join('') : out.join(' '), fillers, repeats };
 }
 
 // ---------- helpers ----------
@@ -1279,6 +1356,8 @@ async function translateMsg(m) {
   m.tr = S.settings.engine === 'off' ? '' : out; save(); rerenderMsg(m); renderHeader();
 }
 function send() {
+  if (MIC.on) { stopMic(); return toast('Stopped listening — check the text, then send 已停止录音，确认文字后再发送'); }
+  $('#micNote').hidden = true;
   const text = $('#draft').value.trim(); if (!text && !pendingPics.length) return;
   const pics = pendingPics.splice(0); renderAttach();
   pics.forEach((p, i) => { const last = i === pics.length - 1;
