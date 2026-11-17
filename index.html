@@ -98,6 +98,12 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .tr{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);color:var(--muted);line-height:1.45;white-space:pre-wrap}
 .tr.en{color:var(--ink);font-size:1.05em}
 .tr .lab{font-size:.72em;text-transform:uppercase;letter-spacing:.04em;margin-right:6px;opacity:.7}
+.tr .trf{background:none;border:0;padding:0;color:inherit;cursor:pointer;font:inherit;font-size:.72em;text-transform:uppercase;letter-spacing:.04em;opacity:.8}
+.tr .trf:hover{opacity:1;text-decoration:underline}
+.tr.fold{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tr.fold .txt{opacity:.75}
+.orig.clamp{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+.more{font-size:.8em;margin:2px 0 4px}
+#cSugg{display:flex;flex-direction:column;gap:4px;margin:6px 0 2px}#cSugg button{text-align:left;padding:6px 8px;font-size:.85em}#cSugg small{display:block;opacity:.7}
 .tr.hidden .txt{filter:blur(5px);cursor:pointer;user-select:none}
 .tr.err{color:#b91c1c}
 .fix{margin-top:8px;background:var(--ok-soft);border-radius:10px;padding:6px 10px;color:var(--ok);line-height:1.45}
@@ -289,6 +295,7 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
   <div class="field"><label for="sCtryA">Chinese speaker's region and place<br><small>中文母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryA"></select><select id="sTzA" hidden title="Time zone 时区"></select><input type="text" id="sCityA" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
   <div class="field"><label for="sCtryB">English speaker's region and place<br><small>英语母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryB"></select><select id="sTzB" hidden title="Time zone 时区"></select><input type="text" id="sCityB" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
   <div class="field"><label for="sMe">Who uses this device<br><small>这台设备是谁在用（只存在这个浏览器里，不会同步）</small></label><select id="sMe"></select></div>
+  <div class="field"><label for="sTrFold">Translations under messages<br><small>翻译显示（只对这台设备）</small></label><select id="sTrFold"><option value="">Show all 全部显示</option><option value="mine">Fold mine to one line 折叠我自己的</option><option value="all">Fold all to one line 全部折叠</option></select></div>
   <div class="field"><label for="sHide">Blur Chinese translations until tapped<br><small>学习模式：先读英文，点一下再看中文</small></label><input type="checkbox" id="sHide"></div>
   <div class="field"><label for="sGrammar">Auto-check grammar of the Chinese speaker's English<br><small>自动检查中文母语者发出的英文语法（LanguageTool 在线服务）</small></label><input type="checkbox" id="sGrammar"></div>
   <fieldset class="ai-box"><legend>✍️ Grammar checker · 批改引擎</legend>
@@ -344,6 +351,8 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
   <h2>Chat title & category · 对话标题和分类</h2>
   <label for="cTitle">Title 标题</label><input type="text" id="cTitle" maxlength="60">
   <div class="muted-s" id="cTitleHint"></div>
+  <div class="muted-s" style="margin-top:8px">↻ Suggested from the latest messages · 从最近的聊天推荐（点一下就用）</div>
+  <div id="cSugg"></div>
   <div class="muted-s" style="margin-top:10px">Category 分类</div>
   <div class="cats" id="cCats"></div>
   <div class="dlg-acts"><button type="button" id="cAuto">↺ Automatic 自动</button><button value="cancel">Cancel 取消</button><button type="button" id="cSave" class="primary">Save 保存</button></div>
@@ -420,11 +429,17 @@ function openConvDlg(id) {
   const t = convTitle(c), a = autoTitle(c);
   $('#cTitle').value = t.own ? c.title : ''; $('#cTitle').placeholder = a ? a.en : 'e.g. Weekend plans';
   $('#cTitleHint').textContent = a ? 'Leave empty for the automatic title: ' + a.en + (a.zh ? ' · ' + a.zh : '') + ' · 留空就用自动标题' : 'Type a title 输入标题';
+  const seen = new Set(), sugg = [];
+  for (const m of [...c.messages].reverse()) { if (!m.text || GREETING.test(m.text.trim())) continue;
+    const en = m.lang === 'en' ? m.text : (m.tr || ''), zh = m.lang === 'zh' ? m.text : (m.tr || ''), t = short(en || zh, 40);
+    if (t.split(/\s+/).length < 2 && !isZh(t) || seen.has(t)) continue; seen.add(t); sugg.push({ t, zh: en ? short(zh, 24) : '' }); if (sugg.length >= 6) break; }
+  $('#cSugg').innerHTML = sugg.length ? sugg.map(x => `<button type="button" data-sugg="${esc(x.t)}">${esc(x.t)}${x.zh ? `<small>${esc(x.zh)}</small>` : ''}</button>`).join('') : '<span class="muted-s">No suggestions yet 暂无</span>';
   const cur = convCat(c);
   $('#cCats').innerHTML = CATS.map(k => `<button type="button" data-cat="${k.id}" class="${k.id === cur ? 'on' : ''}">${k.ic} ${k.en}<br><small>${k.zh}</small></button>`).join('');
   $('#cCats').dataset.sel = cur;
   $('#convDlg').showModal(); $('#cTitle').focus();
 }
+$('#cSugg').onclick = e => { const b = e.target.closest('[data-sugg]'); if (b) { $('#cTitle').value = b.dataset.sugg; $('#cTitle').focus(); } };
 $('#cCats').onclick = e => { const b = e.target.closest('[data-cat]'); if (!b) return; $('#cCats').dataset.sel = b.dataset.cat; $('#cCats').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
 $('#cSave').onclick = () => { const c = S.conversations.find(c => c.id === convEditId); if (!c) return;
   const t = $('#cTitle').value.trim();
@@ -1004,6 +1019,11 @@ function openPic(id) { const u = id && picUrls.get(id); if (!u) return; $('#picB
 $('#timeline').addEventListener('click', e => { const im = e.target.closest('img[data-pic]'); if (im) openPic(im.dataset.pic); });
 setTimeout(retryPicUploads, 3000);
 
+// translations folded to one line: device setting (bb-trfold: none / mine / all) plus a tap on each message
+const trOpen = new Set(), trShut = new Set(), longOpen = new Set();
+function trFolded(m) { if (trOpen.has(m.id)) return false; if (trShut.has(m.id)) return true;
+  const mode = lsGet('bb-trfold'); return mode === 'all' || (mode === 'mine' && isRight(m.speaker)); }
+const isLong = m => m.text && (m.text.length > 280 || m.text.split('\n').length > 7);
 function msgHTML(m) {
   const toLang = m.lang === 'zh' ? 'en' : 'zh';
   let tr;
@@ -1011,7 +1031,8 @@ function msgHTML(m) {
   else if (m.tr === null) tr = `<div class="tr err"><span class="lab">!</span>Translation failed. <button class="icon" data-act="retry">↻ Retry</button> <a href="https://translate.google.com/?sl=${m.lang === 'zh' ? 'zh-CN' : 'en'}&tl=${toLang === 'zh' ? 'zh-CN' : 'en'}&text=${encodeURIComponent(m.text)}&op=translate" target="_blank" rel="noopener">Open Google Translate</a></div>`;
   else if (m.tr === '') tr = '';
   else { const hide = toLang === 'zh' && S.settings.hideZh && !m.revealed;
-    tr = `<div class="tr ${toLang} ${hide ? 'hidden' : ''}" ${hide ? 'data-act="reveal" title="Tap to show 点击显示"' : ''}><span class="lab">${toLang === 'en' ? 'English' : '中文'}</span><span class="txt">${highlight(m.tr, query)}</span></div>`; }
+    const fold = trFolded(m);
+    tr = `<div class="tr ${toLang} ${hide ? 'hidden' : ''} ${fold ? 'fold' : ''}" ${hide ? 'data-act="reveal" title="Tap to show 点击显示"' : ''}><button type="button" class="trf" data-act="trfold" title="${fold ? 'Show the whole translation 展开翻译' : 'Fold the translation to one line 收起翻译'}">${toLang === 'en' ? 'English' : '中文'} ${fold ? '▸' : '▾'}</button> <span class="txt">${highlight(m.tr, query)}</span></div>`; }
   const corrected = m.checking ? `<div class="fix" style="opacity:.7">✍️ checking grammar… 正在检查语法${gEng() === 'local' ? '（Qwen3 4B 本地模型，约 20 秒）' : ''}</div>`
     : m.corrected ? `<div class="fix"><span class="lab">✔ Corrected · 改正后：</span>${byTag(m)} ${highlight(m.corrected, query)} <button class="icon" data-act="saycorr" title="Listen">🔊</button></div>`
     : m.checked && !(m.marks || []).some(k => k.by === 'auto') ? `<div class="fix" style="font-size:.85em">✔ Grammar OK · 语法没问题</div>` : '';
@@ -1033,7 +1054,7 @@ function msgHTML(m) {
   const edited = m.edited ? `<span class="edited" title="Original 原文: ${esc(m.history?.[0]?.text || '')}">✏️ edited 已修改</span>` : '';
   const body = editingId === m.id
     ? `<div class="edit-box"><textarea class="edit-ta" rows="3">${esc(m.text)}</textarea><div class="edit-acts"><span class="muted-s">Enter = save · Esc = cancel</span><button type="button" data-act="editCancel">Cancel 取消</button><button type="button" class="primary" data-act="editSave">Save 保存</button></div></div>`
-    : (m.img ? picHTML(m) : '') + (m.text ? `<div class="orig">${marksHTML(m)}</div>` : '') + notesList(m);
+    : (m.img ? picHTML(m) : '') + (m.text ? `<div class="orig ${isLong(m) && !longOpen.has(m.id) ? 'clamp' : ''}">${marksHTML(m)}</div>` + (isLong(m) ? `<button type="button" class="icon more" data-act="more">${longOpen.has(m.id) ? '▴ Show less 收起' : '▾ Show all 展开全文'}</button>` : '') : '') + notesList(m);
   if (!m.text && m.img) tr = ''; // a picture without words: nothing to translate
   const html = `<div class="msg ${m.speaker}${isRight(m.speaker) ? ' right' : ''}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
   <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${!m.text && m.img ? '🖼' : m.lang === 'zh' ? '中文' : 'EN'}</span>${viaTag(m)}${edited}${sendState(m)}</div>
@@ -1165,6 +1186,8 @@ async function onMsgAction(act, m, el) {
     case 'saycorr': speak(m.corrected, 'en'); break;
     case 'sayai': speak(m.ai.natural, 'en'); break;
     case 'reveal': m.revealed = true; save(); rerenderMsg(m); break;
+    case 'trfold': if (trFolded(m)) { trShut.delete(m.id); trOpen.add(m.id); } else { trOpen.delete(m.id); trShut.add(m.id); } rerenderMsg(m); break;
+    case 'more': longOpen.has(m.id) ? longOpen.delete(m.id) : longOpen.add(m.id); rerenderMsg(m); break;
     case 'retry': translateMsg(m); break;
     case 'say': speak(enText, 'en'); break;
     case 'sayzh': if (zhText) speak(zhText, 'zh'); break;
@@ -1437,7 +1460,7 @@ $('#title').onclick = () => openConvDlg(conv().id);
 $('#search').oninput = e => { query = e.target.value.trim(); renderTimeline(); };
 $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
 $('#settingsBtn').onclick = () => {
-  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillMeMenu(); fillPlaceMenus(); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
+  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillMeMenu(); fillPlaceMenus(); $('#sTrFold').value = lsGet('bb-trfold'); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
   $('#sGEngine').value = gEng(); $('#sGEngine').disabled = WEB; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
   $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); renderSyncBox(); $('#settingsDlg').showModal();
 };
@@ -1508,6 +1531,7 @@ function fillMeMenu() {
   $('#sMe').value = ME;
 }
 $('#sMe').onchange = () => setMe($('#sMe').value);
+$('#sTrFold').onchange = () => { lsSet('bb-trfold', $('#sTrFold').value); trOpen.clear(); trShut.clear(); renderTimeline(); };
 // first visit of the web version: ask once who is using this device
 if (WEB && !lsGet('bb-me-set')) {
   const d = document.createElement('dialog'); d.id = 'meDlg';

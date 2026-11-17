@@ -64,13 +64,13 @@ Every correction shows which checker made it. · 每条批改都会标明是哪�
 ## Features · 功能
 
 - Switch the speaker with the button or Alt+S. The Chinese speaker (named S by default) is on the left; the English speaker (named A) is on the right. You can change both names in ⚙️ Settings.
-- Automatic translation. In learning mode, the Chinese is blurred until you click it.
+- Automatic translation. In learning mode, the Chinese is blurred until you click it. Tap a translation's label (▾) to fold it to one line, or fold your own (or all) translations in ⚙️ Settings — per device. Very long messages show 6 lines with "Show all".
 - **中→EN** turns a Chinese draft into English. **EN→中** (for the English speaker) gives natural Chinese with pinyin and a tip.
 - Red-pen corrections that read the scene: a "This moment" version, plus an "only fix mistakes" version.
 - 🖼 Pictures: paste a screenshot (Ctrl+V), drag a picture onto the message box, or tap 🖼 (phone: photos or camera). Pictures are shrunk to about 100–300 KB and kept outside the chat file: in the browser, in `data/img` (desktop), and in `img/` of your ☁ sync repository so the other device can see them. Tap a picture to see it full size.
 - ⭐ Vocabulary: each saved word gets a word card (phonetics, part of speech, English definitions and examples from the free dictionaryapi.dev, Chinese meaning with pinyin, the chat sentence it came from, your note) and a colour for how well you know it (New / Learning / Known). Practice shows the words you know least first, in both directions, and spaces the reviews (Forgot / Unsure / Got it). CSV export. 🔊 Read aloud. 🎤 Voice input (Chrome and Edge).
 - Message times for two places: in ⚙️ Settings each person can choose a country or region (and a time zone if it has more than one), plus an optional city. If nothing is chosen, the board uses this computer's time.
-- Chats get an automatic title from what they are about (greetings skipped, in English and Chinese) and a guessed category (🍜 Food, 📅 Plans, ✈️ Travel, 🛒 Shopping, 💗 Feelings, 💼 Work & study, 🩺 Health, 🏠 Daily life). Tap the icon next to a chat, or the title at the top, to rename it or change the category; filter the list by category.
+- Chats get an automatic title from what they are about (greetings skipped, in English and Chinese) and a guessed category (🍜 Food, 📅 Plans, ✈️ Travel, 🛒 Shopping, 💗 Feelings, 💼 Work & study, 🩺 Health, 🏠 Daily life). Tap the icon next to a chat, or the title at the top, to rename it (with title suggestions from the latest messages) or change the category; filter the list by category.
 - Search, several conversations, Markdown export, JSON backup and restore, dark mode.
 
 ## Your data · 数据
