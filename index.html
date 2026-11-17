@@ -100,7 +100,12 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .tr .lab{font-size:.72em;text-transform:uppercase;letter-spacing:.04em;margin-right:6px;opacity:.7}
 .tr .trf{background:none;border:0;padding:0;color:inherit;cursor:pointer;font:inherit;font-size:.72em;text-transform:uppercase;letter-spacing:.04em;opacity:.8}
 .tr .trf:hover{opacity:1;text-decoration:underline}
-.tr.fold{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tr.fold .txt{opacity:.75}
+.trbar{display:flex;align-items:center;gap:6px;margin-bottom:2px}.trbar .lab{margin-right:auto}
+.trbtn,.trchip{font-size:.72em;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer}
+.trbtn:hover,.trchip:hover{color:var(--ink);border-color:var(--muted)}
+.tr.trhid{border-top:0;padding-top:0;margin-top:4px}
+.tr.fold .txt{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.75}
+.tr.clamp .txt{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
 .orig.clamp{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
 .more{font-size:.8em;margin:2px 0 4px}
 #cSugg{display:flex;flex-direction:column;gap:4px;margin:6px 0 2px}#cSugg button{text-align:left;padding:6px 8px;font-size:.85em}#cSugg small{display:block;opacity:.7}
@@ -295,7 +300,7 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
   <div class="field"><label for="sCtryA">Chinese speaker's region and place<br><small>中文母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryA"></select><select id="sTzA" hidden title="Time zone 时区"></select><input type="text" id="sCityA" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
   <div class="field"><label for="sCtryB">English speaker's region and place<br><small>英语母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryB"></select><select id="sTzB" hidden title="Time zone 时区"></select><input type="text" id="sCityB" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
   <div class="field"><label for="sMe">Who uses this device<br><small>这台设备是谁在用（只存在这个浏览器里，不会同步）</small></label><select id="sMe"></select></div>
-  <div class="field"><label for="sTrFold">Translations under messages<br><small>翻译显示（只对这台设备）</small></label><select id="sTrFold"><option value="">Show all 全部显示</option><option value="mine">Fold mine to one line 折叠我自己的</option><option value="all">Fold all to one line 全部折叠</option></select></div>
+  <div class="field"><label for="sTrFold">Translations under messages<br><small>翻译显示（只对这台设备）</small></label><select id="sTrFold"><option value="">Show all 全部显示</option><option value="mine">Fold mine to one line 折叠我自己的</option><option value="all">Fold all to one line 全部折叠</option><option value="hidemine">Hide mine (tap to show) 隐藏我自己的</option><option value="hideall">Hide all (tap to show) 全部隐藏</option></select></div>
   <div class="field"><label for="sHide">Blur Chinese translations until tapped<br><small>学习模式：先读英文，点一下再看中文</small></label><input type="checkbox" id="sHide"></div>
   <div class="field"><label for="sGrammar">Auto-check grammar of the Chinese speaker's English<br><small>自动检查中文母语者发出的英文语法（LanguageTool 在线服务）</small></label><input type="checkbox" id="sGrammar"></div>
   <fieldset class="ai-box"><legend>✍️ Grammar checker · 批改引擎</legend>
@@ -1042,8 +1047,14 @@ setTimeout(retryPicUploads, 3000);
 
 // translations folded to one line: device setting (bb-trfold: none / mine / all) plus a tap on each message
 const trOpen = new Set(), trShut = new Set(), longOpen = new Set();
-function trFolded(m) { if (trOpen.has(m.id)) return false; if (trShut.has(m.id)) return true;
-  const mode = lsGet('bb-trfold'); return mode === 'all' || (mode === 'mine' && isRight(m.speaker)); }
+// state of a translation on this device: 'open' | 'fold' (one line) | 'hide' (only a small chip). Setting bb-trfold:
+// '' all open · mine/all = fold · hidemine/hideall = hide. A tap on a message overrides it for this visit.
+const trState_ = new Map(), longTrOpen = new Set();
+function trState(m) { if (trState_.has(m.id)) return trState_.get(m.id);
+  const mode = lsGet('bb-trfold'), mine = isRight(m.speaker);
+  return mode === 'all' || (mode === 'mine' && mine) ? 'fold' : mode === 'hideall' || (mode === 'hidemine' && mine) ? 'hide' : 'open'; }
+const trFolded = m => trState(m) !== 'open';
+const isLongTr = m => m.tr && (m.tr.length > 300 || m.tr.split('\n').length > 7);
 const isLong = m => m.text && (m.text.length > 280 || m.text.split('\n').length > 7);
 function msgHTML(m) {
   const toLang = m.lang === 'zh' ? 'en' : 'zh';
@@ -1052,8 +1063,14 @@ function msgHTML(m) {
   else if (m.tr === null) tr = `<div class="tr err"><span class="lab">!</span>Translation failed. <button class="icon" data-act="retry">↻ Retry</button> <a href="https://translate.google.com/?sl=${m.lang === 'zh' ? 'zh-CN' : 'en'}&tl=${toLang === 'zh' ? 'zh-CN' : 'en'}&text=${encodeURIComponent(m.text)}&op=translate" target="_blank" rel="noopener">Open Google Translate</a></div>`;
   else if (m.tr === '') tr = '';
   else { const hide = toLang === 'zh' && S.settings.hideZh && !m.revealed;
-    const fold = trFolded(m);
-    tr = `<div class="tr ${toLang} ${hide ? 'hidden' : ''} ${fold ? 'fold' : ''}" ${hide ? 'data-act="reveal" title="Tap to show 点击显示"' : ''}><button type="button" class="trf" data-act="trfold" title="${fold ? 'Show the whole translation 展开翻译' : 'Fold the translation to one line 收起翻译'}">${toLang === 'en' ? 'English' : '中文'} ${fold ? '▸' : '▾'}</button> <span class="txt">${highlight(m.tr, query)}</span></div>`; }
+    const st = trState(m), lab = toLang === 'en' ? 'English' : '中文';
+    const clamp = st === 'open' && isLongTr(m) && !longTrOpen.has(m.id);
+    tr = st === 'hide' ? `<div class="tr ${toLang} trhid"><button type="button" class="trchip" data-act="tropen" title="Show the translation 显示翻译">${lab} ▸ Show 显示翻译</button></div>`
+      : `<div class="tr ${toLang} ${hide ? 'hidden' : ''} ${st === 'fold' ? 'fold' : ''} ${clamp ? 'clamp' : ''}" ${hide ? 'data-act="reveal" title="Tap to show 点击显示"' : ''}><div class="trbar"><span class="lab">${lab}</span>`
+        + (st === 'fold' ? `<button type="button" class="trbtn" data-act="tropen" title="Show the whole translation 展开翻译">▾ Show 展开</button><button type="button" class="trbtn" data-act="trhide" title="Hide the translation 隐藏翻译">✕ Hide 隐藏</button>`
+          : `<button type="button" class="trbtn" data-act="trfold" title="Fold the translation to one line 收起翻译">▴ Fold 收起</button>`)
+        + `</div><span class="txt">${highlight(m.tr, query)}</span>`
+        + (st === 'open' && isLongTr(m) ? `<button type="button" class="icon more" data-act="trmore">${clamp ? '▾ Show all 展开全文' : '▴ Show less 收起'}</button>` : '') + `</div>`; }
   const corrected = m.checking ? `<div class="fix" style="opacity:.7">✍️ checking grammar… 正在检查语法${gEng() === 'local' ? '（Qwen3 4B 本地模型，约 20 秒）' : ''}</div>`
     : m.corrected ? `<div class="fix"><span class="lab">✔ Corrected · 改正后：</span>${byTag(m)} ${highlight(m.corrected, query)} <button class="icon" data-act="saycorr" title="Listen">🔊</button></div>`
     : m.checked && !(m.marks || []).some(k => k.by === 'auto') ? `<div class="fix" style="font-size:.85em">✔ Grammar OK · 语法没问题</div>` : '';
@@ -1207,7 +1224,10 @@ async function onMsgAction(act, m, el) {
     case 'saycorr': speak(m.corrected, 'en'); break;
     case 'sayai': speak(m.ai.natural, 'en'); break;
     case 'reveal': m.revealed = true; save(); rerenderMsg(m); break;
-    case 'trfold': if (trFolded(m)) { trShut.delete(m.id); trOpen.add(m.id); } else { trOpen.delete(m.id); trShut.add(m.id); } rerenderMsg(m); break;
+    case 'trfold': trState_.set(m.id, 'fold'); rerenderMsg(m); break;
+    case 'tropen': trState_.set(m.id, 'open'); rerenderMsg(m); break;
+    case 'trhide': trState_.set(m.id, 'hide'); rerenderMsg(m); break;
+    case 'trmore': longTrOpen.has(m.id) ? longTrOpen.delete(m.id) : longTrOpen.add(m.id); rerenderMsg(m); break;
     case 'more': longOpen.has(m.id) ? longOpen.delete(m.id) : longOpen.add(m.id); rerenderMsg(m); break;
     case 'retry': translateMsg(m); break;
     case 'say': speak(enText, 'en'); break;
@@ -1552,7 +1572,7 @@ function fillMeMenu() {
   $('#sMe').value = ME;
 }
 $('#sMe').onchange = () => setMe($('#sMe').value);
-$('#sTrFold').onchange = () => { lsSet('bb-trfold', $('#sTrFold').value); trOpen.clear(); trShut.clear(); renderTimeline(); };
+$('#sTrFold').onchange = () => { lsSet('bb-trfold', $('#sTrFold').value); trState_.clear(); renderTimeline(); };
 // first visit of the web version: ask once who is using this device
 if (WEB && !lsGet('bb-me-set')) {
   const d = document.createElement('dialog'); d.id = 'meDlg';

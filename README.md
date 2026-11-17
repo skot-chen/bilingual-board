@@ -64,7 +64,7 @@ Every correction shows which checker made it. · 每条批改都会标明是哪�
 ## Features · 功能
 
 - Switch the speaker with the button or Alt+S. The Chinese speaker (named S by default) is on the left; the English speaker (named A) is on the right. You can change both names in ⚙️ Settings.
-- Automatic translation, line by line, so paragraphs, line breaks and lists keep their layout. In learning mode, the Chinese is blurred until you click it. Tap a translation's label (▾) to fold it to one line, or fold your own (or all) translations in ⚙️ Settings — per device. Very long messages show 6 lines with "Show all".
+- Automatic translation, line by line, so paragraphs, line breaks and lists keep their layout. In learning mode, the Chinese is blurred until you click it. Each translation has ▴ Fold (one line), ▾ Show and ✕ Hide buttons; long translations show 6 lines with "Show all". In ⚙️ Settings each device can fold or hide its own (or all) translations. Very long messages show 6 lines with "Show all".
 - **中→EN** turns a Chinese draft into English. **EN→中** (for the English speaker) gives natural Chinese with pinyin and a tip.
 - Red-pen corrections that read the scene: a "This moment" version, plus an "only fix mistakes" version.
 - 🖼 Pictures: paste a screenshot (Ctrl+V), drag a picture onto the message box, or tap 🖼 (phone: photos or camera). Pictures are shrunk to about 100–300 KB and kept outside the chat file: in the browser, in `data/img` (desktop), and in `img/` of your ☁ sync repository so the other device can see them. Tap a picture to see it full size.
