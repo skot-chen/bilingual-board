@@ -616,13 +616,25 @@ async function myMemory(text, from, to) {
   }
   return res.join(from === 'en' ? '' : ' ');
 }
+async function translateLine(text, from, to) {
+  const e = S.settings.engine; let out = null;
+  if (e === 'auto' || e === 'chrome') out = await chromeTranslate(text, from, to);
+  if (!out && (e === 'auto' || e === 'mymemory')) { try { out = await myMemory(text, from, to); } catch { out = null; } }
+  return out;
+}
+// Line by line, so paragraphs, line breaks, blank lines and indents of the original stay in the translation.
 async function translate(text, from, to) {
   const e = S.settings.engine; if (e === 'off' || !text.trim()) return null;
   const k = from + to + text; if (trCache.has(k)) return trCache.get(k);
-  let out = null;
-  if (e === 'auto' || e === 'chrome') out = await chromeTranslate(text, from, to);
-  if (!out && (e === 'auto' || e === 'mymemory')) { try { out = await myMemory(text, from, to); } catch { out = null; } }
-  if (out) trCache.set(k, out);
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const outLines = new Array(lines.length); let failed = false, next = 0;
+  const worker = async () => { while (next < lines.length && !failed) { const i = next++; const ln = lines[i];
+    if (!ln.trim() || !/[A-Za-z㐀-鿿]/.test(ln)) { outLines[i] = ln; continue; } // blank line, emoji, numbers: keep as is
+    const lead = ln.match(/^\s*/)[0], t = await translateLine(ln.trim(), from, to);
+    if (t == null) failed = true; else outLines[i] = lead + t.trim(); } };
+  await Promise.all(Array.from({ length: Math.min(4, lines.length) }, worker));
+  if (failed) return null;
+  const out = outLines.join('\n'); trCache.set(k, out);
   return out;
 }
 async function engineStatus() {
@@ -896,6 +908,15 @@ function renderTimeline() {
     lastTs = m.ts; html += msgHTML(m);
   }
   T.innerHTML = html; if (!query) T.scrollTop = T.scrollHeight;
+  repairLayout(msgs);
+}
+// Older translations were squashed into one paragraph: redo the ones whose original has line breaks (a few at a time).
+const relaid = new Set();
+function repairLayout(msgs) {
+  if (S.settings.engine === 'off') return; let n = 0;
+  for (const m of msgs) { if (n >= 5) break;
+    if (m.text && m.tr && m.text.trim().includes('\n') && !m.tr.includes('\n') && !relaid.has(m.id)) { relaid.add(m.id); n++;
+      translate(m.text, m.lang, m.lang === 'zh' ? 'en' : 'zh').then(out => { if (out && out.includes('\n')) { m.tr = out; save(); rerenderMsg(m); } }); } }
 }
 // ----- markup: marks are {id,start,end,type,fix?,note?} ranges over m.text -----
 // types: u = underline, red = red-pen correction (strike + fix), hl = highlight, good = nice phrase, note = comment
