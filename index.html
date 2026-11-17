@@ -127,6 +127,12 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .fix .lab{font-weight:700;font-size:.78em}
 .fix .orig-strike{color:var(--muted);text-decoration:line-through;font-size:.85em}
 .note{margin-top:6px;font-size:.85em;color:var(--muted);font-style:italic}
+.quote{display:block;width:100%;text-align:left;font:inherit;font-size:.85em;line-height:1.4;margin:0 0 6px;padding:4px 8px;border:0;border-left:3px solid var(--muted);border-radius:6px;background:rgba(127,127,127,.12);color:inherit;cursor:pointer;overflow:hidden}
+.quote.A{border-left-color:var(--a)}.quote.B{border-left-color:var(--b)}
+.quote b{font-size:.92em}.quote .qt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
+.quote .qtr{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:.92em}
+.replybar{display:flex;align-items:flex-start;gap:6px;margin:0 0 6px}.replybar[hidden]{display:none}
+.replybar .quote{margin:0;cursor:default;flex:1}.replybar .x{flex:none}
 .acts{margin-top:6px;display:flex;gap:2px;flex-wrap:wrap;opacity:.0;transition:opacity .15s}
 .msg:hover .acts,.msg:focus-within .acts{opacity:1}
 @media (hover:none){.acts{opacity:1}}
@@ -293,6 +299,7 @@ header .search{flex-shrink:6;min-width:90px}
       <div class="grip" id="grip" title="Drag up/down to resize the input box 上下拖动调整输入框高度" role="separator" aria-orientation="horizontal"><span>↕ drag 拖动</span></div>
       <div class="who" id="who"></div>
       <div class="phrases" id="phrases"></div>
+      <div class="replybar" id="replyBar" hidden></div>
       <div class="attach" id="attach"></div>
       <div class="mic-note" id="micNote" hidden aria-live="polite"></div>
       <div class="draft-wrap">
@@ -1162,7 +1169,7 @@ function renderSide() {
   }
 }
 function renderTimeline() {
-  const T = $('#timeline'), c = conv();
+  const T = $('#timeline'), c = conv(); renderReplyBar();
   const msgs = c.messages.filter(m => !query || [m.text, m.tr, m.fix].some(x => x && x.toLowerCase().includes(query.toLowerCase())));
   if (!c.messages.length) { T.innerHTML = `<div class="empty"><div class="empty-cats" aria-hidden="true"><img src="img/fawn-lie.png" alt=""><img src="img/lilac-sit.png" alt=""></div><b>Start talking!</b> 开始聊天吧<br>Pick who is speaking below, type in English or 中文, press Enter.<br>选择说话人，用英文或中文输入，按回车发送。<br>Tip: ${esc(S.settings.nameA)}, try English first — use <b>中→EN</b> when you get stuck.<br>小贴士：先尽量用英文写，卡住了再点 <b>中→EN</b>。</div>`; return; }
   if (!msgs.length) { T.innerHTML = `<div class="empty"><img class="empty-cat" src="img/fawn-crouch.png" alt="">No matches for “${esc(query)}”</div>`; return; }
@@ -1317,6 +1324,27 @@ function trState(m) { if (trState_.has(m.id)) return trState_.get(m.id);
 const trFolded = m => trState(m) !== 'open';
 const isLongTr = m => m.tr && (m.tr.length > 300 || m.tr.split('\n').length > 7);
 const isLong = m => m.text && (m.text.length > 280 || m.text.split('\n').length > 7);
+// ↩ quote reply: m.reply = { id, sp, t (quoted words), part (only a selected piece), tr (its translation) }
+let replyTo = null; // { conv, id, sp, t, part, tr }
+const cut = (t, n) => { t = String(t || '').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+function quoteParts(r) { const o = !r.part && conv().messages.find(x => x.id === r.id);
+  const t = o ? (o.text || (o.img ? '🖼 Picture 图片' : '')) : r.t, tr = o ? (o.text && o.tr) || '' : r.tr || '';
+  return { t: cut(t, 200), tr: cut(tr, 160), gone: !conv().messages.some(x => x.id === r.id) }; }
+function quoteInner(r) { const q = quoteParts(r);
+  return `<b>↩ ${esc(nameOf(r.sp))}</b>${r.part ? ' <small>(part 部分)</small>' : ''}<span class="qt">${esc(q.t)}</span>${q.tr ? `<span class="qtr">${esc(q.tr)}</span>` : ''}`; }
+function quoteHTML(m) { return m.reply ? `<button type="button" class="quote ${m.reply.sp}" data-act="jumpq" title="Go to the original message 跳到原消息">${quoteInner(m.reply)}</button>` : ''; }
+function renderReplyBar() { const b = $('#replyBar');
+  if (!replyTo || replyTo.conv !== S.current) { replyTo = null; b.hidden = true; b.innerHTML = ''; return; }
+  b.hidden = false; b.innerHTML = `<div class="quote ${replyTo.sp}">${quoteInner(replyTo)}</div><button type="button" class="icon x" id="replyX" title="Cancel the reply (Esc) 取消引用">✕</button>`; }
+function setReply(m, part) {
+  replyTo = { conv: S.current, id: m.id, sp: m.speaker, t: cut(part || m.text || (m.img ? '🖼 Picture 图片' : ''), 200), part: !!part, tr: part ? '' : cut(m.text && m.tr, 160) };
+  renderReplyBar(); $('#draft').focus();
+  if (part) { const r = replyTo, zh = isZh(part); translate(part, zh ? 'zh' : 'en', zh ? 'en' : 'zh').then(o => { if (o && replyTo === r) { r.tr = cut(o, 160); renderReplyBar(); } }); }
+}
+function clearReply() { replyTo = null; renderReplyBar(); }
+function jumpTo(id) { const el = document.querySelector(`.msg[data-id="${id}"]`);
+  if (!el) return toast('The original message was deleted 原消息已删除');
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2200); }
 function msgHTML(m) {
   const toLang = m.lang === 'zh' ? 'en' : 'zh';
   let tr;
@@ -1357,8 +1385,9 @@ function msgHTML(m) {
   if (!m.text && m.img) tr = ''; // a picture without words: nothing to translate
   const html = `<div class="msg ${m.speaker}${isRight(m.speaker) ? ' right' : ''}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
   <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${!m.text && m.img ? '🖼' : m.lang === 'zh' ? '中文' : 'EN'}</span>${viaTag(m)}${edited}${sendState(m)}</div>
-  ${body}${tr}${fix}${note}
+  ${quoteHTML(m)}${body}${tr}${fix}${note}
   <div class="acts">
+    <button class="icon" data-act="reply" title="Reply to this message (select words first to quote just them) 引用回复（可先选中某一句）">↩ Reply 回复</button>
     <button class="icon" data-act="edit" title="Edit / fix typos 修改（改错字）">✏️ Edit</button>
     ${enText ? `<button class="icon" data-act="say" title="Listen in English 听英文">🔊 EN</button>` : ''}
     <button class="icon" data-act="sayzh" title="听中文 Listen in Chinese">🔊 中</button>
@@ -1370,7 +1399,7 @@ function msgHTML(m) {
     <button class="icon" data-act="copy" title="Copy">📋</button>
     <button class="icon" data-act="del" title="Delete">🗑</button>
   </div></div></div>`;
-  return m.text ? html : html.replace(/<div class="acts">[\s\S]*$/, `<div class="acts"><button class="icon" data-act="pic" title="Open">⤢ Open 查看</button>
+  return m.text ? html : html.replace(/<div class="acts">[\s\S]*$/, `<div class="acts"><button class="icon" data-act="reply" title="Reply 引用回复">↩ Reply 回复</button><button class="icon" data-act="pic" title="Open">⤢ Open 查看</button>
     <button class="icon" data-act="swap" title="Sent as the wrong person? 身份发错了？">⇄ ${esc(nameOf(m.speaker === 'A' ? 'B' : 'A'))}</button><button class="icon" data-act="del" title="Delete">🗑</button></div></div></div>`);
 }
 function renderComposer() {
@@ -1414,12 +1443,15 @@ function send() {
   $('#micNote').hidden = true;
   const text = $('#draft').value.trim(); if (!text && !pendingPics.length) return;
   const pics = pendingPics.splice(0); renderAttach();
+  const reply = replyTo && replyTo.conv === S.current ? (({ conv: _, ...r }) => r)(replyTo) : null; clearReply();
   pics.forEach((p, i) => { const last = i === pics.length - 1;
     const pm = { id: uid(), ts: Date.now() + i, speaker: S.speaker, text: last ? text : '', lang: last && isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME }, img: { id: p.id, w: p.w, h: p.h } };
+    if (reply && i === 0) pm.reply = reply;
     if (!pm.text) pm.tr = '';
     picUrls.set(p.id, p.url); if (GH.token) GH.unsent.add(pm.id); conv().messages.push(pm); uploadPic(p.id, p.blob); if (last && text) translateMsg(pm); });
   if (pics.length) { $('#draft').value = ''; autoGrow(); save(); ghSoon(300); renderTimeline(); renderSide(); renderHeader(); $('#draft').focus(); return; }
   const m = { id: uid(), ts: Date.now(), speaker: S.speaker, text, lang: isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME } };
+  if (reply) { if (!reply.tr) delete reply.tr; if (!reply.part) delete reply.part; m.reply = reply; }
   if (GH.token) GH.unsent.add(m.id);
   conv().messages.push(m);
   $('#draft').value = ''; autoGrow(); closePreview();
@@ -1467,6 +1499,9 @@ async function onMsgAction(act, m, el) {
   const zhText = m.lang === 'zh' ? m.text : m.tr;
   switch (act) {
     case 'pic': openPic(m.img && m.img.id); break;
+    case 'reply': { const sel = getSelection(), st = String(sel).trim();
+      setReply(m, st && el.contains(sel.anchorNode) && !el.querySelector('.quote')?.contains(sel.anchorNode) && st !== (m.text || '').trim() ? st : ''); break; }
+    case 'jumpq': jumpTo(m.reply.id); break;
     case 'swap': {
       const to = m.speaker === 'A' ? 'B' : 'A';
       if (!confirm(`Move this message to ${nameOf(to)}? (It was sent as ${nameOf(m.speaker)}.)\n把这条消息改成 ${nameOf(to)} 发的？`)) break;
@@ -1665,7 +1700,8 @@ $('#engineMenu').onclick = e => { const b = e.target.closest('[data-eng]'); if (
   if (WEB && b.dataset.eng !== 'lt') { toast('Desktop version only — download it from GitHub · 只能在电脑版使用'); return; }
   S.settings.gEngine = b.dataset.eng; save(); renderCheckBtn(); engMenuOpen(false); toast('Checker 批改引擎: ' + ENGINES.find(x => x.id === b.dataset.eng).name); };
 document.addEventListener('click', () => { engMenuOpen(false); $('#roleMenu')?.classList.remove('show'); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') engMenuOpen(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { engMenuOpen(false); if (replyTo && !document.querySelector('dialog[open]')) clearReply(); } });
+$('#replyBar').onclick = e => { if (e.target.closest('#replyX')) { clearReply(); $('#draft').focus(); } else if (replyTo) jumpTo(replyTo.id); };
 $('#previewClose').onclick = closePreview;
 $('#who').onclick = e => {
   if (e.target.closest('#roleBtn')) { e.stopPropagation(); $('#roleMenu').classList.toggle('show'); return; }
@@ -1709,7 +1745,7 @@ function showSelTool() {
     <button data-mt="red"><span class="sw" style="background:#dc2626"></span>Correct 红笔批改</button>
     <button data-mt="hl"><span class="sw" style="background:#fde68a"></span>Highlight 高亮</button>
     <button data-mt="good"><span class="sw" style="background:#86efac"></span>Nice 好句</button>
-    <button data-mt="note">💬 Comment 批注</button><button data-mt="star">⭐</button>`;
+    <button data-mt="note">💬 Comment 批注</button><button data-mt="star">⭐</button><button data-mt="reply">↩ Reply 引用</button>`;
   placeTool(r.getBoundingClientRect());
 }
 function showMarkMenu(m, id, anchor) {
@@ -1734,6 +1770,7 @@ tool.onclick = async e => {
     if (t === 'editnote') { const n = prompt('Comment 批注:', k.note || ''); if (n === null) return; k.note = n.trim(); }
   } else {
     const { start, end } = selCtx, snip = m.text.slice(start, end);
+    if (t === 'reply') { hideTool(); getSelection().removeAllRanges(); return setReply(m, snip === m.text.trim() ? '' : snip); }
     if (t === 'star') { hideTool(); const zh = isZh(snip), other = await translate(snip, zh ? 'zh' : 'en', zh ? 'en' : 'zh');
       const en = zh ? other : snip; if (!en) return toast('Translation failed');
       if (S.vocab.some(v => v.en.toLowerCase() === en.toLowerCase())) return toast('Already saved 已收藏');
