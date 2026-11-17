@@ -46,7 +46,10 @@
     const ev = new Map(); for (const src of [older, newer]) for (const e of src.events || []) ev.set(e.id, e);
     // read-receipt switches: each person's own switch, whichever changed last
     const rcpt = {}; for (const src of [older, newer]) for (const [k, v] of Object.entries(src.rcpt || {})) if (!rcpt[k] || (v.upd || 0) >= (rcpt[k].upd || 0)) rcpt[k] = v;
+    // each device's time zone (so older messages from it show the sender's own clock): latest per device
+    const devTz = {}; for (const src of [older, newer]) for (const [k, v] of Object.entries(src.devTz || {})) if (!devTz[k] || (v.upd || 0) >= (devTz[k].upd || 0)) devTz[k] = v;
     const out = Object.assign({}, newer, {
+      devTz,
       events: [...ev.values()].sort((x, y) => x.ts - y.ts).slice(-800), rcpt,
       updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0),
       conversations: [...convs.values()],

@@ -1113,9 +1113,13 @@ const placeOf = sp => { const s = S.settings, c = s['ctry' + sp]; return s['city
 // each message keeps the time zone of the device it was sent from, so it shows the sender's own clock
 const MYTZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } })();
 const zoneCity = z => (z || '').split('/').pop().replace(/_/g, ' ');
-const msgTz = m => m.tz && zoneOK(m.tz) ? m.tz : tzOf(m.speaker) || (m.via && m.via.d === DEV ? MYTZ : '');
+const devZone = d => { const z = d && S.devTz?.[d]?.tz; return z && zoneOK(z) ? z : ''; };
+const msgTz = m => m.tz && zoneOK(m.tz) ? m.tz : devZone(m.via?.d) || tzOf(m.speaker) || (m.via && m.via.d === DEV ? MYTZ : '');
+// tell the other device which time zone this one is in (also fixes the times of older messages from here)
+function registerTz() { if (!MYTZ || S.devTz?.[DEV]?.tz === MYTZ) return; (S.devTz ||= {})[DEV] = { tz: MYTZ, upd: Date.now() }; save(); }
 function msgTime(m) { const tz = msgTz(m), there = clockOf(m.ts, tz), here = clockOf(m.ts, '');
-  const place = placeOf(m.speaker) || (m.tz ? zoneCity(m.tz) : '');
+  const place = placeOf(m.speaker) || (tz ? zoneCity(tz) : '');
+  if (!tz && !isRight(m.speaker)) return here + ' (your time 你这边时间)';
   return there + (place ? ' ' + place : '') + (tz && there !== here ? ' · here 这边 ' + here : ''); }
 function msgTip(m) { const tz = msgTz(m), f = z => new Date(m.ts).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', ...(z ? { timeZone: z } : {}) });
   return "Sender's time 对方当地时间: " + f(tz) + (tz ? ' (' + zoneCity(tz) + ')' : '') + '\nYour time 你这边: ' + f(''); }
@@ -1956,7 +1960,7 @@ async function resumeTranslations() {
   for (const c of S.conversations) for (const m of c.messages)
     if (m.tr === undefined && !pending.has(m.id)) { pending.add(m.id); await translateMsg(m); pending.delete(m.id); }
 }
-purgeOld(); renderAll(); pullServer().then(resumeTranslations);
+purgeOld(); registerTz(); renderAll(); pullServer().then(resumeTranslations);
 
 // ----- English-only interface: one click (top-right button) or open the page with ?lang=en (?lang=zh = both languages again).
 // It only hides the Chinese hints in menus, buttons and labels; chat messages, translations, phrases and vocab are never touched.
