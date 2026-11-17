@@ -396,6 +396,8 @@ dialog{overflow-x:hidden}
     <select id="sEngine"><option value="auto">Auto (on-device first)</option><option value="chrome">Chrome on-device only</option><option value="mymemory">MyMemory (online)</option><option value="off">Off 关闭</option></select></div>
   <div class="field"><small id="engineStatus" style="color:var(--muted)"></small></div>
   <div class="field"><label for="sRate">Speech speed 朗读语速</label><input type="range" id="sRate" min="0.5" max="1.3" step="0.05"></div>
+  <div class="field"><label for="sVoiceEn">English voice 英文声音 <small>(this device 本设备)</small></label><select id="sVoiceEn"></select></div>
+  <div class="field"><label for="sVoiceZh">Chinese voice 中文声音 <small>(this device 本设备)</small></label><select id="sVoiceZh"></select></div>
   <div class="field"><label for="sScale">Text size 字号</label><input type="range" id="sScale" min="0.85" max="1.6" step="0.05"></div>
   <fieldset class="ai-box" id="syncBox"><legend>☁ Sync 同步 · GitHub</legend>
     <div class="field"><small>Save the chats to your own <b>private</b> GitHub repository, so every device shows the same chats.<br>把聊天记录存到你自己的<b>私有</b> GitHub 仓库，手机、电脑打开都能看到同样的聊天。</small></div>
@@ -1038,13 +1040,56 @@ async function checkDraft() {
 }
 
 // ---------- speech ----------
+// iPhones and Macs also list joke voices (Bad News, Bubbles, Grandpa…) and Cantonese ones under "zh", so voices are
+// scored: real Mandarin / English first, better-quality voices next. Each device can also pick its own voice in Settings.
+const JOKE_VOICE = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|ralph|fred|kathy|eddy|flo|grandma|grandpa|reed|rocko|sandy|shelley|deranged|hysterical)\b/i;
+function voiceScore(v, lang) {
+  const l = v.lang.replace('_', '-').toLowerCase(), n = v.name + ' ' + v.voiceURI;
+  if (JOKE_VOICE.test(v.name)) return -1;
+  let s;
+  if (lang === 'zh') {
+    if (!/^(zh|cmn)/.test(l) || /hk|yue|mo$/.test(l) || /cantonese|粤|粵|廣東|广东/i.test(n)) return -1;
+    s = /cn|hans/.test(l) ? 30 : 10;
+  } else {
+    if (!l.startsWith('en')) return -1;
+    s = l === 'en-us' ? 30 : l === 'en-gb' ? 26 : /en-(au|ca|ie|nz)/.test(l) ? 15 : 5;
+  }
+  if (/premium|enhanced|natural|neural/i.test(n)) s += 20;
+  if (/google|online|microsoft/i.test(n)) s += 10;
+  if (/samantha|ava|allison|susan|zoe|nicky|karen|daniel|serena|aria|jenny|tingting|ting-ting|lili|xiaoxiao|yunxi|meijia/i.test(n)) s += 8;
+  if (/compact/i.test(n)) s -= 5;
+  return s;
+}
+const VOICE_KEY = l => 'bb-voice-' + l;
+function voicesFor(lang) { return speechSynthesis.getVoices().map(v => [v, voiceScore(v, lang)]).filter(x => x[1] >= 0).sort((a, b) => b[1] - a[1]).map(x => x[0]); }
+function pickVoice(lang) {
+  const list = voicesFor(lang); let want = ''; try { want = localStorage.getItem(VOICE_KEY(lang)) || ''; } catch {}
+  return (want && list.find(v => v.voiceURI === want)) || list[0] || null;
+}
+// Text made for reading, not for the eye: no emoji, markdown signs or links. Long text is cut into sentences,
+// because some browsers stop or stutter on one long piece.
+function speechChunks(text) {
+  const t = String(text || '').replace(/https?:\/\/\S+/g, ' ').replace(/\p{Extended_Pictographic}|️|‍/gu, ' ')
+    .replace(/[*_`#>~|]+/g, ' ').replace(/\s*(→|⇒|->)\s*/g, ', ').replace(/[ \t]+/g, ' ').trim();
+  const parts = t.match(/[^.!?。！？；;\n]+[.!?。！？；;]*["'”’）)]*|\n+/g) || [];
+  const out = []; let cur = '';
+  for (let p of parts) { p = p.trim(); if (!p) continue;
+    const sep = /[　-鿿＀-￯]$/.test(cur) ? '' : ' ';
+    if (cur && (cur + sep + p).length > 180) { out.push(cur); cur = p; } else cur = cur ? cur + sep + p : p; }
+  if (cur) out.push(cur);
+  return out.flatMap(c => c.length <= 220 ? [c] : c.match(/.{1,200}(\s|，|,|$)/gs) || [c]);
+}
+let speakQueue = [];  // kept so the browser doesn't throw the utterances away halfway
 function speak(text, lang) {
   if (!('speechSynthesis' in self)) return toast('Speech not supported');
+  const chunks = speechChunks(text); if (!chunks.length) return;
+  const rate = S.settings.rate, voice = pickVoice(lang), code = voice ? voice.lang.replace('_', '-') : (lang === 'zh' ? 'zh-CN' : 'en-US');
+  const busy = speechSynthesis.speaking || speechSynthesis.pending;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text); u.lang = lang === 'zh' ? 'zh-CN' : 'en-US'; u.rate = S.settings.rate;
-  const v = speechSynthesis.getVoices().find(v => v.lang.replace('_', '-').startsWith(u.lang.slice(0, 2)) && /natural|online|google/i.test(v.name))
-    || speechSynthesis.getVoices().find(v => v.lang.replace('_', '-').startsWith(u.lang.slice(0, 2)));
-  if (v) u.voice = v; speechSynthesis.speak(u);
+  speakQueue = chunks.map(c => { const u = new SpeechSynthesisUtterance(c); u.lang = code; u.rate = rate; if (voice) u.voice = voice; return u; });
+  const go = () => { speechSynthesis.resume(); speakQueue.forEach(u => speechSynthesis.speak(u)); };
+  // Safari garbles or drops speech started right after cancel(), so wait a moment when something was playing.
+  busy ? setTimeout(go, 150) : go();
 }
 // ---------- voice input: keeps listening through pauses until you tap ⏹, then tidies the text ----------
 // Each pause ends a phrase; when you stop, fillers (um, 嗯, 那个…) and stuttered repeats are removed and every phrase
@@ -1992,7 +2037,7 @@ if (window.visualViewport) { const fitVV = () => { if (Math.abs(visualViewport.s
 $('#settingsBtn').onclick = () => {
   const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillMeMenu(); fillPlaceMenus(); $('#sTrFold').value = lsGet('bb-trfold'); $('#sRcpt').checked = !!(ME && S.rcpt?.[ME]?.on); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
   $('#sGEngine').value = gEng(); $('#sGEngine').disabled = WEB; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
-  $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); renderSyncBox(); $('#settingsDlg').showModal();
+  $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); renderSyncBox(); fillVoiceMenus(); $('#settingsDlg').showModal();
 };
 $('#settingsDlg').addEventListener('input', () => {
   const s = S.settings; s.nameA = $('#sNameA').value.trim() || 'S'; s.nameB = $('#sNameB').value.trim() || 'A'; for (const k of ['A', 'B']) {
@@ -2102,7 +2147,20 @@ if (WEB && !lsGet('bb-me-set')) {
   d.addEventListener('cancel', e => e.preventDefault());
   setTimeout(() => d.showModal(), 300);
 }
-speechSynthesis?.addEventListener?.('voiceschanged', () => {});
+// Voice menus in Settings: "Auto" plus the usable voices, best first. Choosing one plays a short sample.
+function fillVoiceMenus() {
+  if (!('speechSynthesis' in self)) return;
+  for (const [id, lang] of [['#sVoiceEn', 'en'], ['#sVoiceZh', 'zh']]) {
+    const sel = $(id); if (!sel) continue; let want = ''; try { want = localStorage.getItem(VOICE_KEY(lang)) || ''; } catch {}
+    const list = voicesFor(lang);
+    sel.innerHTML = `<option value="">Auto 自动${list[0] ? ' (' + esc(list[0].name) + ')' : ''}</option>` +
+      list.map(v => `<option value="${esc(v.voiceURI)}">${esc(v.name)} · ${esc(v.lang)}</option>`).join('');
+    sel.value = list.some(v => v.voiceURI === want) ? want : '';
+  }
+}
+for (const [id, lang, sample] of [['#sVoiceEn', 'en', 'Hello! This is how I sound.'], ['#sVoiceZh', 'zh', '你好！这是我的声音。']])
+  $(id)?.addEventListener('change', e => { try { e.target.value ? localStorage.setItem(VOICE_KEY(lang), e.target.value) : localStorage.removeItem(VOICE_KEY(lang)); } catch {} speak(sample, lang); });
+speechSynthesis?.addEventListener?.('voiceschanged', fillVoiceMenus);
 
 const pending = new Set();
 async function resumeTranslations() {
