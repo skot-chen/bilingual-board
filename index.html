@@ -279,7 +279,7 @@ header .search{flex-shrink:6;min-width:90px}
 @media (max-width:600px){header h1{min-width:60px;flex-basis:80px}header #saveState{display:none}header .search{min-width:56px;width:70px}header .lang-btn{padding:4px 7px}}
 @media (max-width:1050px){#stats{display:none} .search{width:130px}}
 @media (min-width:761px){#menuBtn{display:none}}
-@media (max-width:760px){.app{grid-template-columns:1fr} aside{display:none} aside.open{display:flex;position:fixed;inset:0 20% 0 0;z-index:5;box-shadow:0 0 40px #0005}
+@media (max-width:760px){.app{grid-template-columns:1fr} aside{display:flex;position:fixed;left:0;top:0;bottom:0;width:80%;max-width:340px;z-index:5;transform:translateX(-102%);visibility:hidden;transition:transform .3s cubic-bezier(.22,.8,.3,1),box-shadow .3s,visibility 0s linear .3s} aside.open{transform:none;visibility:visible;box-shadow:0 0 40px #0005;transition:transform .3s cubic-bezier(.22,.8,.3,1),box-shadow .3s} aside.dragging{transition:none;visibility:visible;box-shadow:0 0 40px #0005}
   header{padding:8px 10px;gap:6px} .search{width:90px} #saveState{display:none} #timeline{padding:12px 10px}
   .bubble{max-width:84%} .who .hint{display:none}}
 #sideShade,.ph-btn{display:none}
@@ -291,7 +291,8 @@ dialog{overflow-x:hidden}
   .app{position:fixed;left:0;right:0;top:var(--appTop,0px)}
   #menuBtn{font-size:1.4em;opacity:1;min-width:42px;min-height:40px;padding:2px 8px}
   #settingsBtn{margin-left:6px;min-width:38px;min-height:38px}
-  aside.open + #sideShade{display:block;position:fixed;inset:0;background:#0006;z-index:4}
+  #sideShade{display:block;position:fixed;inset:0;background:#0006;z-index:4;opacity:0;pointer-events:none;transition:opacity .3s}
+  aside.open + #sideShade{opacity:1;pointer-events:auto} aside.dragging + #sideShade{transition:none}
   #expandBtn{display:none}
   .grip{margin:-8px -10px 2px}
   #draft{min-height:44px;padding-top:9px;padding-bottom:9px}
@@ -1956,15 +1957,22 @@ $('#title').onclick = () => openConvDlg(conv().id);
 $('#search').oninput = e => { query = e.target.value.trim(); renderTimeline(); };
 $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
 $('#sideShade').onclick = () => $('#side').classList.remove('open');
-// Phones: swipe right on the chat to open the chat list, swipe left to close it.
-{ let sw = null;
+// Phones: drag the chat list in from the left (it follows the finger), drag it back to close; a quick flick is enough.
+{ let sw = null; const side = $('#side'), shade = $('#sideShade');
+  const W = () => side.offsetWidth || innerWidth * 0.8;
   document.addEventListener('touchstart', e => { if (!PHONE.matches || e.touches.length > 1) { sw = null; return; } const t = e.touches[0];
-    sw = { x: t.clientX, y: t.clientY, t: Date.now(), ok: !e.target.closest('textarea, input, select, .phrases, .row, .who, dialog, .edit-box') }; }, { passive: true });
-  document.addEventListener('touchend', e => { const s = sw; sw = null; if (!s || Date.now() - s.t > 700) return;
-    const t = e.changedTouches[0], dx = t.clientX - s.x, dy = t.clientY - s.y; if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
-    const side = $('#side'), open = side.classList.contains('open');
-    if (dx < 0 && open) side.classList.remove('open');
-    else if (dx > 0 && !open && s.ok && !document.querySelector('dialog[open]') && !String(getSelection())) side.classList.add('open'); }, { passive: true }); }
+    sw = { x: t.clientX, y: t.clientY, t: Date.now(), dx: 0, dir: '', drag: false, open: side.classList.contains('open'),
+      ok: !e.target.closest('textarea, input, select, .phrases, .row, .who-row, .acts, dialog, .edit-box') && !document.querySelector('dialog[open]') }; }, { passive: true });
+  document.addEventListener('touchmove', e => { if (!sw) return; const t = e.touches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y; sw.dx = dx;
+    if (!sw.dir) { if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return; sw.dir = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+      if (sw.dir === 'h' && (sw.open || (dx > 0 && sw.ok && !String(getSelection())))) { sw.drag = true; side.classList.add('dragging'); } }
+    if (!sw.drag) return; if (e.cancelable) e.preventDefault();
+    const w = W(), x = sw.open ? Math.min(0, dx) : Math.min(0, -w + dx);
+    side.style.transform = 'translateX(' + x + 'px)'; shade.style.opacity = String(Math.max(0, 1 + x / w)); }, { passive: false });
+  const done = () => { const s = sw; sw = null; if (!s || !s.drag) return; const w = W(), v = s.dx / Math.max(1, Date.now() - s.t);
+    const open = s.open ? !(s.dx < -w / 3 || v < -0.4) : (s.dx > w / 3 || v > 0.4);
+    side.classList.remove('dragging'); side.style.transform = ''; shade.style.opacity = ''; side.classList.toggle('open', open); };
+  document.addEventListener('touchend', done, { passive: true }); document.addEventListener('touchcancel', done, { passive: true }); }
 $('#phBtn').onclick = () => $('#composer').classList.toggle('ph-on');
 $('#phrases').addEventListener('click', e => { if (PHONE.matches && e.target.closest('[data-ph]')) $('#composer').classList.remove('ph-on'); });
 // Phones: Send sits next to the message box.
