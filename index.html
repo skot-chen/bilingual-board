@@ -131,6 +131,10 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .quote.A{border-left-color:var(--a)}.quote.B{border-left-color:var(--b)}
 .quote b{font-size:.92em}.quote .qt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
 .quote .qtr{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:.92em}
+.evline{text-align:center;font-size:.8em;color:var(--muted);margin:6px auto;max-width:90%}.evline button{font-size:1em}
+.seen{text-align:right;font-size:.75em;color:var(--muted);margin:-2px 52px 6px}.seen.l{text-align:left}
+.trash-btn{margin-top:8px;width:100%;text-align:left;font-size:.85em}.trash-btn .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-left:4px}
+.trash-item{border:1px dashed var(--muted);border-radius:10px;padding:6px 8px;margin:6px 0;font-size:.85em}.trash-item .t{font-weight:600}.trash-item .d{color:var(--muted);font-size:.9em;margin:2px 0 4px}
 .replybar{display:flex;align-items:flex-start;gap:6px;margin:0 0 6px}.replybar[hidden]{display:none}
 .replybar .quote{margin:0;cursor:default;flex:1}.replybar .x{flex:none}
 .acts{margin-top:6px;display:flex;gap:2px;flex-wrap:wrap;opacity:.0;transition:opacity .15s}
@@ -334,6 +338,7 @@ header .search{flex-shrink:6;min-width:90px}
   <div class="field"><label for="sCtryB">English speaker's region and place<br><small>英语母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryB"></select><select id="sTzB" hidden title="Time zone 时区"></select><input type="text" id="sCityB" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
   <div class="field"><label for="sMe">Who uses this device<br><small>这台设备是谁在用（只存在这个浏览器里，不会同步）</small></label><select id="sMe"></select></div>
   <div class="field"><label for="sTrFold">Translations under messages<br><small>翻译显示（只对这台设备）</small></label><select id="sTrFold"><option value="">Show all 全部显示</option><option value="mine">Fold mine to one line 折叠我自己的</option><option value="all">Fold all to one line 全部折叠</option><option value="hidemine">Hide mine (tap to show) 隐藏我自己的</option><option value="hideall">Hide all (tap to show) 全部隐藏</option></select></div>
+  <div class="field"><label for="sRcpt">✓✓ Read receipts<br><small>已读回执：双方都打开才会显示；关掉后你也看不到对方的已读（需要先固定这台设备的身份）</small></label><input type="checkbox" id="sRcpt"></div>
   <div class="field"><label for="sHide">Blur Chinese translations until tapped<br><small>学习模式：先读英文，点一下再看中文</small></label><input type="checkbox" id="sHide"></div>
   <div class="field"><label for="sGrammar">Auto-check grammar of the Chinese speaker's English<br><small>自动检查中文母语者发出的英文语法（LanguageTool 在线服务）</small></label><input type="checkbox" id="sGrammar"></div>
   <fieldset class="ai-box"><legend>✍️ Grammar checker · 批改引擎</legend>
@@ -551,7 +556,7 @@ $('#cAuto').onclick = () => { const c = S.conversations.find(c => c.id === convE
 // ---------- 📌 pinned chats (c.pin = 1, 2, 3… their order) and drag to reorder ----------
 const isPinned = c => typeof c.pin === 'number';
 const lastAct = c => c.messages.at(-1)?.ts || c.created || 0;
-const sortedConvs = () => [...S.conversations].sort((a, b) => (isPinned(b) - isPinned(a)) || (isPinned(a) ? a.pin - b.pin : lastAct(b) - lastAct(a)));
+const sortedConvs = () => S.conversations.filter(c => !c.trashed).sort((a, b) => (isPinned(b) - isPinned(a)) || (isPinned(a) ? a.pin - b.pin : lastAct(b) - lastAct(a)));
 function setPins(ids) { // ids = the pinned chats in their new order; everything else unpinned
   for (const c of S.conversations) { const i = ids.indexOf(c.id); const want = i < 0 ? undefined : i + 1;
     if (c.pin !== want) { if (want === undefined) delete c.pin; else c.pin = want; c.metaUpd = Date.now(); } }
@@ -606,8 +611,25 @@ const REPO_URL = 'https://github.com/skot-chen/bilingual-board';
 const gEng = () => WEB ? 'lt' : S.settings.gEngine;
 let S = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || freshState(); } catch { return freshState(); } })();
 S.settings = renameOld(Object.assign(freshState().settings, S.settings));
-const conv = () => S.conversations.find(c => c.id === S.activeId) || S.conversations[0];
+const conv = () => { let c = S.conversations.find(c => c.id === S.activeId && !c.trashed) || S.conversations.find(c => !c.trashed);
+  if (!c) { c = newConv(); S.conversations.push(c); } if (S.activeId !== c.id) S.activeId = c.id; return c; };
+const syncSig = () => JSON.stringify([S.conversations, S.events || [], S.rcpt || {}]) + S.activeId; // anything the screen shows
 function markDeleted(id) { (S.deleted ||= []).push(id); }
+// change log both people see: deleted / moved messages, role changes, chats moved to the bin
+function logEvent(kind, x) { (S.events ||= []).push({ id: uid(), ts: Date.now(), kind, by: ME || S.speaker, dev: DEV, devName: DEV_NAME, ...x }); if (S.events.length > 800) S.events.splice(0, S.events.length - 800); }
+const BIN_DAYS = 7, BIN_MS = BIN_DAYS * 864e5;
+function trashConv(c) { c.trashed = { by: ME || S.speaker, at: Date.now(), dev: DEV, devName: DEV_NAME }; c.metaUpd = Date.now(); logEvent('trash', { conv: c.id, title: convTitle(c).en }); }
+function restoreConv(c) { delete c.trashed; c.metaUpd = Date.now(); logEvent('restore', { conv: c.id, title: convTitle(c).en }); }
+function purgeConv(c, auto) { S.conversations = S.conversations.filter(x => x !== c); markDeleted(c.id); logEvent('purge', { conv: c.id, title: convTitle(c).en, auto: !!auto }); }
+function purgeOld() { const old = S.conversations.filter(c => c.trashed && Date.now() - c.trashed.at > BIN_MS); old.forEach(c => purgeConv(c, true)); if (old.length) save(); }
+// read receipts: only when both people switched them on (and this device belongs to one person)
+const otherOf = sp => sp === 'A' ? 'B' : 'A';
+const rcptOn = () => !!(ME && S.rcpt?.[ME]?.on && S.rcpt?.[otherOf(ME)]?.on);
+function markRead() { if (!ME || document.hidden || !S.rcpt?.[ME]?.on) return; const c = conv();
+  const last = c.messages.filter(m => m.speaker !== ME).at(-1); if (!last || (c.read?.[ME] || 0) >= last.ts) return;
+  c.read = { ...c.read, [ME]: last.ts }; save(); }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) markRead(); });
+window.addEventListener('focus', () => markRead());
 
 // ----- ☁ GitHub sync: the whole board in one file (board.json) of the user's own private repo.
 // The key (fine-grained token) and repo name live only in this browser's localStorage, never inside S.
@@ -630,7 +652,7 @@ function usualOf(devId) {
   if (n.A + n.B < 3) return '';
   return n.A > n.B ? 'A' : n.B > n.A ? 'B' : '';
 }
-function setMe(v) { ME = v === 'A' || v === 'B' ? v : ''; lsSet('bb-me', ME); lsSet('bb-me-set', '1'); if (ME) S.speaker = ME; save(); renderAll(); }
+function setMe(v) { const was = ME; ME = v === 'A' || v === 'B' ? v : ''; if (was !== ME && (was || conv().messages.length)) logEvent('role', { conv: conv().id, from: was, to: ME }); lsSet('bb-me', ME); lsSet('bb-me-set', '1'); if (ME) S.speaker = ME; save(); renderAll(); }
 const GH = { token: lsGet('bb-gh-token'), repo: lsGet('bb-gh-repo') || (location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] + '/bilingual-board-data' : ''),
   busy: false, again: false, timer: 0, msg: '', unsent: new Set() };
 const b64e = str => { const b = new TextEncoder().encode(str); let o = ''; for (let i = 0; i < b.length; i += 0x8000) o += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(o); };
@@ -659,12 +681,12 @@ async function ghSync(quiet) {
         const txt = j.content ? b64d(j.content) : await (await ghFetch('/contents/' + GH_FILE, {}, 'application/vnd.github.raw')).text(); // big files come without content
         GH.remote = JSON.parse(txt);
         if (GH.remote && Array.isArray(GH.remote.conversations)) {
-          const before = JSON.stringify(S.conversations) + S.activeId;
+          const before = syncSig();
           const keepSp = S.speaker, keepId = S.activeId;
           S = mergeBoard(S, GH.remote); S.settings = renameOld(Object.assign(freshState().settings, S.settings));
           S.speaker = ME || keepSp; if (S.conversations.some(c => c.id === keepId)) S.activeId = keepId;
           lsSet(KEY, JSON.stringify(S));
-          if (JSON.stringify(S.conversations) + S.activeId !== before) { changed = true; renderAll(); if (!WEB) pushServer(); }
+          if (syncSig() !== before) { changed = true; renderAll(); if (!WEB) pushServer(); }
         }
       } else if (r.status === 404) { GH.sha = undefined; GH.remote = null; GH.etag = ''; }
       else throw r.status;
@@ -725,10 +747,10 @@ async function pullServer() {
     serverOK = serverEverOK = true; const remote = await r.json();
     // merge, never replace: keeps chats from both this browser and the saved file
     if (remote && Array.isArray(remote.conversations)) {
-      const before = countMessages(S);
+      const before = syncSig();
       S = mergeBoard(S, remote); S.settings = renameOld(Object.assign(freshState().settings, S.settings));
       localStorage.setItem(KEY, JSON.stringify(S));
-      if (countMessages(S) !== before || !S.conversations.some(c => c.id === S.activeId)) renderAll();
+      if (syncSig() !== before) renderAll();
     }
     pushServer();
     setSaveState('Saved to data/ ✓');
@@ -1086,6 +1108,15 @@ const zoneOff = z => { try { return new Intl.DateTimeFormat('en-US', { timeZone:
 const clockOf = (ts, tz) => new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
 const tzOf = sp => { const z = S.settings['tz' + sp]; return z && zoneOK(z) ? z : ''; };
 const placeOf = sp => { const s = S.settings, c = s['ctry' + sp]; return s['city' + sp] || (c ? regionName(c, 'en') + (lsGet('bb-lang') === 'en' ? '' : ' ' + regionName(c, 'zh')) : ''); };
+// each message keeps the time zone of the device it was sent from, so it shows the sender's own clock
+const MYTZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } })();
+const zoneCity = z => (z || '').split('/').pop().replace(/_/g, ' ');
+const msgTz = m => m.tz && zoneOK(m.tz) ? m.tz : tzOf(m.speaker) || (m.via && m.via.d === DEV ? MYTZ : '');
+function msgTime(m) { const tz = msgTz(m), there = clockOf(m.ts, tz), here = clockOf(m.ts, '');
+  const place = placeOf(m.speaker) || (m.tz ? zoneCity(m.tz) : '');
+  return there + (place ? ' ' + place : '') + (tz && there !== here ? ' · here 这边 ' + here : ''); }
+function msgTip(m) { const tz = msgTz(m), f = z => new Date(m.ts).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', ...(z ? { timeZone: z } : {}) });
+  return "Sender's time 对方当地时间: " + f(tz) + (tz ? ' (' + zoneCity(tz) + ')' : '') + '\nYour time 你这边: ' + f(''); }
 const timeLabel = (ts, sp) => clockOf(ts, tzOf(sp)) + (placeOf(sp) ? ' ' + placeOf(sp) : '');
 const timeTip = (ts, sp) => { const o = sp === 'A' ? 'B' : 'A'; return nameOf(o) + (placeOf(o) ? ' (' + placeOf(o) + ')' : '') + ': ' + clockOf(ts, tzOf(o)); };
 let ctryOptions = '';
@@ -1115,7 +1146,7 @@ const PHRASES = {
 };
 
 // ---------- rendering ----------
-let query = '', sideTab = 'chats';
+let query = '', sideTab = 'chats', binOpen = false;
 // which checker made a correction (shown as a small tag), and the one the Check button uses now
 const ENGINE_LABEL = { lt: 'LanguageTool · 只查拼写语法', local: '🐱 Qwen3 4B · 本地模型', claude: '🤖 Claude' };
 const byTag = m => m.checkedBy ? `<span class="by" title="Checked by 批改引擎">by ${ENGINE_LABEL[m.checkedBy] || m.checkedBy}</span>` : '';
@@ -1158,6 +1189,14 @@ function renderSide() {
        <div style="min-width:0"><div class="t">${esc(t.en)}</div>${t.zh ? `<div class="tz">${esc(t.zh)}</div>` : ''}
        <div class="d">${c.messages.length} msgs · ${dayLabel(c.messages.at(-1)?.ts || c.created)}</div></div></div>
        <div class="conv-acts"><button class="icon pin ${isPinned(c) ? 'on' : ''}" data-pin="${c.id}" title="${isPinned(c) ? 'Unpin 取消置顶' : 'Pin to the top 置顶'}">📌</button><button class="icon" data-del="${c.id}" title="Delete chat">🗑</button></div></div>`; }).join('');
+    const bin = S.conversations.filter(c => c.trashed).sort((a, b) => b.trashed.at - a.trashed.at);
+    const seen = +lsGet('bb-bin-seen') || 0, fresh = bin.some(c => c.trashed.by !== ME && c.trashed.at > seen);
+    const gone = (S.events || []).filter(e => e.kind === 'purge' && Date.now() - e.ts < BIN_MS).reverse();
+    if (bin.length || gone.length) L.innerHTML += `<button type="button" class="trash-btn" id="binBtn">🗑 Recently deleted 最近删除 (${bin.length})${fresh ? '<span class="dot" title="New 有新的"></span>' : ''} ${binOpen ? '▴' : '▾'}</button>`
+      + (binOpen ? bin.map(c => { const tr = c.trashed, left = Math.max(1, Math.ceil((tr.at + BIN_MS - Date.now()) / 864e5));
+        return `<div class="trash-item"><div class="t">${esc(convTitle(c).en)}</div><div class="d">${c.messages.length} msgs · deleted by ${esc(nameOf(tr.by))} (${esc(devIcon(tr.devName || '') + ' ' + (tr.devName || ''))}) ${esc(dayLabel(tr.at))} ${esc(clockOf(tr.at, ''))} · ${esc(nameOf(tr.by))} 删除的 · gone in ${left} day${left > 1 ? 's' : ''} ${left} 天后彻底删除</div>
+          <button type="button" data-binrestore="${c.id}">↺ Restore 还原</button> <button type="button" data-binpurge="${c.id}">✕ Delete now 彻底删除</button></div>`; }).join('')
+        + gone.map(e => `<div class="trash-item" style="opacity:.75"><div class="d">✕ “${esc(e.title || '')}” was deleted for good by ${e.auto ? 'the ' + BIN_DAYS + '-day limit 到期自动' : esc(nameOf(e.by))} · ${esc(dayLabel(e.ts))} 已彻底删除</div></div>`).join('') : '');
     F.innerHTML = `<button id="newConv" class="primary" style="flex:1">+ New chat 新对话</button>`;
     $('#newConv').onclick = () => { const c = newConv(); S.conversations.push(c); S.activeId = c.id; save(); renderAll(); $('#draft').focus(); };
   } else {
@@ -1168,20 +1207,32 @@ function renderSide() {
     $('#vocabCsv').onclick = () => download('vocab.csv', '﻿English,Chinese,Pinyin,Level,Note,Added\n' + S.vocab.map(v => [v.en, v.zh, pyOf(v), LV[lvOf(v)].en, v.note || '', new Date(v.ts).toISOString().slice(0, 10)].map(x => '"' + String(x || '').replace(/"/g, '""') + '"').join(',')).join('\n'), 'text/csv');
   }
 }
+function evHTML(e) { const who = esc(nameOf(e.by)), dev = esc(devIcon(e.devName || '') + ' ' + (e.devName || '')), at = esc(clockOf(e.ts, ''));
+  const t = e.kind === 'del' ? `🗑 ${who} deleted a message${e.sp ? ' from ' + esc(nameOf(e.sp)) : ''} · ${who} 删除了一条消息`
+    : e.kind === 'swap' ? `⇄ ${who} moved a message from ${esc(nameOf(e.from))} to ${esc(nameOf(e.to))} · 消息改成了 ${esc(nameOf(e.to))} 发的 <button type="button" class="icon" data-evgo="${e.msg}" title="Go to the message 跳到消息">↪</button>`
+    : e.kind === 'role' ? `🔒 ${dev} is now used by ${e.to ? esc(nameOf(e.to)) : 'both (shared)'}${e.from ? ' (was ' + esc(nameOf(e.from)) + ')' : ''} · 这台设备的身份改成了 ${e.to ? esc(nameOf(e.to)) : '两人共用'}`
+    : e.kind === 'restore' ? `↺ ${who} restored this chat · ${who} 还原了这个对话` : '';
+  return `<div class="evline">${t} · <span title="${dev}">${at}</span></div>`; }
 function renderTimeline() {
   const T = $('#timeline'), c = conv(); renderReplyBar();
   const msgs = c.messages.filter(m => !query || [m.text, m.tr, m.fix].some(x => x && x.toLowerCase().includes(query.toLowerCase())));
   if (!c.messages.length) { T.innerHTML = `<div class="empty"><div class="empty-cats" aria-hidden="true"><img src="img/fawn-lie.png" alt=""><img src="img/lilac-sit.png" alt=""></div><b>Start talking!</b> 开始聊天吧<br>Pick who is speaking below, type in English or 中文, press Enter.<br>选择说话人，用英文或中文输入，按回车发送。<br>Tip: ${esc(S.settings.nameA)}, try English first — use <b>中→EN</b> when you get stuck.<br>小贴士：先尽量用英文写，卡住了再点 <b>中→EN</b>。</div>`; return; }
   if (!msgs.length) { T.innerHTML = `<div class="empty"><img class="empty-cat" src="img/fawn-crouch.png" alt="">No matches for “${esc(query)}”</div>`; return; }
   let html = '', lastDay = '', lastTs = 0;
+  const evs = query ? [] : (S.events || []).filter(e => e.conv === c.id && ['del', 'swap', 'role', 'restore'].includes(e.kind));
+  let readId = '', ei = 0;
+  if (rcptOn()) { const upto = c.read?.[otherOf(ME)] || 0; readId = c.messages.filter(m => m.speaker === ME && m.ts <= upto).at(-1)?.id || ''; }
   for (const m of msgs) {
+    while (ei < evs.length && evs[ei].ts <= m.ts) html += evHTML(evs[ei++]);
     const d = new Date(m.ts).toDateString();
     if (d !== lastDay) { html += `<div class="day"><span>${dayLabel(m.ts)}</span></div>`; lastDay = d; }
     else if (m.ts - lastTs > 30 * 60e3) html += `<div class="gap">· ${Math.round((m.ts - lastTs) / 60e3)} min later ·</div>`;
     lastTs = m.ts; html += msgHTML(m);
+    if (m.id === readId) html += `<div class="seen${isRight(m.speaker) ? '' : ' l'}">✓✓ Read 已读 · ${esc(nameOf(otherOf(ME)))}</div>`;
   }
+  while (ei < evs.length) html += evHTML(evs[ei++]);
   T.innerHTML = html; if (!query) T.scrollTop = T.scrollHeight;
-  repairLayout(msgs);
+  repairLayout(msgs); markRead();
 }
 // Older translations were squashed into one paragraph: redo the ones whose original has line breaks (a few at a time).
 const relaid = new Set();
@@ -1384,7 +1435,7 @@ function msgHTML(m) {
     : (m.img ? picHTML(m) : '') + (m.text ? `<div class="orig ${isLong(m) && !longOpen.has(m.id) ? 'clamp' : ''}">${marksHTML(m)}</div>` + (isLong(m) ? `<button type="button" class="icon more" data-act="more">${longOpen.has(m.id) ? '▴ Show less 收起' : '▾ Show all 展开全文'}</button>` : '') : '') + notesList(m);
   if (!m.text && m.img) tr = ''; // a picture without words: nothing to translate
   const html = `<div class="msg ${m.speaker}${isRight(m.speaker) ? ' right' : ''}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
-  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${!m.text && m.img ? '🖼' : m.lang === 'zh' ? '中文' : 'EN'}</span>${viaTag(m)}${edited}${sendState(m)}</div>
+  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(msgTip(m))}">${esc(msgTime(m))}</span><span>${!m.text && m.img ? '🖼' : m.lang === 'zh' ? '中文' : 'EN'}</span>${viaTag(m)}${edited}${sendState(m)}</div>
   ${quoteHTML(m)}${body}${tr}${fix}${note}
   <div class="acts">
     <button class="icon" data-act="reply" title="Reply to this message (select words first to quote just them) 引用回复（可先选中某一句）">↩ Reply 回复</button>
@@ -1445,12 +1496,12 @@ function send() {
   const pics = pendingPics.splice(0); renderAttach();
   const reply = replyTo && replyTo.conv === S.current ? (({ conv: _, ...r }) => r)(replyTo) : null; clearReply();
   pics.forEach((p, i) => { const last = i === pics.length - 1;
-    const pm = { id: uid(), ts: Date.now() + i, speaker: S.speaker, text: last ? text : '', lang: last && isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME }, img: { id: p.id, w: p.w, h: p.h } };
+    const pm = { id: uid(), ts: Date.now() + i, speaker: S.speaker, text: last ? text : '', lang: last && isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME }, tz: MYTZ, img: { id: p.id, w: p.w, h: p.h } };
     if (reply && i === 0) pm.reply = reply;
     if (!pm.text) pm.tr = '';
     picUrls.set(p.id, p.url); if (GH.token) GH.unsent.add(pm.id); conv().messages.push(pm); uploadPic(p.id, p.blob); if (last && text) translateMsg(pm); });
   if (pics.length) { $('#draft').value = ''; autoGrow(); save(); ghSoon(300); renderTimeline(); renderSide(); renderHeader(); $('#draft').focus(); return; }
-  const m = { id: uid(), ts: Date.now(), speaker: S.speaker, text, lang: isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME } };
+  const m = { id: uid(), ts: Date.now(), speaker: S.speaker, text, lang: isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME }, tz: MYTZ };
   if (reply) { if (!reply.tr) delete reply.tr; if (!reply.part) delete reply.part; m.reply = reply; }
   if (GH.token) GH.unsent.add(m.id);
   conv().messages.push(m);
@@ -1505,7 +1556,7 @@ async function onMsgAction(act, m, el) {
     case 'swap': {
       const to = m.speaker === 'A' ? 'B' : 'A';
       if (!confirm(`Move this message to ${nameOf(to)}? (It was sent as ${nameOf(m.speaker)}.)\n把这条消息改成 ${nameOf(to)} 发的？`)) break;
-      m.speaker = to; m.roleOk = true; m.edited = Date.now(); save(); renderTimeline(); toast('Moved to ' + nameOf(to) + ' 已改成 ' + nameOf(to)); break;
+      logEvent('swap', { conv: conv().id, msg: m.id, from: m.speaker, to }); m.speaker = to; m.roleOk = true; m.edited = Date.now(); save(); renderTimeline(); toast('Moved to ' + nameOf(to) + ' 已改成 ' + nameOf(to)); break;
     }
     case 'edit': editingId = m.id; rerenderMsg(m); { const ta = document.querySelector(`.msg[data-id="${m.id}"] .edit-ta`); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.style.height = ta.scrollHeight + 4 + 'px'; } break;
     case 'editCancel': editingId = null; rerenderMsg(m); break;
@@ -1532,7 +1583,7 @@ async function onMsgAction(act, m, el) {
     case 'sayzh': if (zhText) speak(zhText, 'zh'); break;
     case 'sayfix': speak(m.fix, 'en'); break;
     case 'copy': navigator.clipboard?.writeText(m.text + (m.tr ? '\n' + m.tr : '')); toast('Copied 已复制'); break;
-    case 'del': if (confirm('Delete this message? 删除这条消息？')) { const c = conv(); c.messages = c.messages.filter(x => x !== m); markDeleted(m.id); save(); renderTimeline(); renderSide(); renderHeader(); } break;
+    case 'del': if (confirm('Delete this message? 删除这条消息？')) { const c = conv(); c.messages = c.messages.filter(x => x !== m); markDeleted(m.id); logEvent('del', { conv: c.id, sp: m.speaker, mts: m.ts }); save(); renderTimeline(); renderSide(); renderHeader(); } break;
     case 'note': { const n = prompt('Note for this message 备注:', m.note || ''); if (n !== null) { m.note = n.trim(); save(); rerenderMsg(m); } break; }
     case 'fix': {
       const f = prompt('More natural English for:\n“' + m.text + '”\n\nType the better version 输入更地道的说法:', m.fix || m.text);
@@ -1651,7 +1702,7 @@ $('#exportMd').onclick = () => {
   const c = conv(); let md = `# ${convTitle(c).en}\n\n`; let last = '';
   for (const m of c.messages) { const d = dayLabel(m.ts); if (d !== last) { md += `\n## ${d}\n\n`; last = d; }
     const mk = (m.marks || []).map(k => `> ${{ u: '__', red: '✗', hl: '🖍', good: '👍', note: '💬' }[k.type]} “${m.text.slice(k.start, k.end)}”${k.fix ? ' → ' + k.fix : ''}${k.note ? ': ' + k.note : ''}  \n`).join('');
-    md += `**${nameOf(m.speaker)}** _${timeLabel(m.ts, m.speaker)}_${m.edited ? ' (edited)' : ''}  \n${m.img ? '🖼 [picture]  \n' : ''}${m.text}  \n` + (m.tr ? `> ${m.tr}  \n` : '') + mk + (m.fix ? `> ✔ Better: ${m.fix}  \n` : '') + (m.note ? `> 💬 ${m.note}  \n` : '') + '\n'; }
+    md += `**${nameOf(m.speaker)}** _${msgTime(m)}_${m.edited ? ' (edited)' : ''}  \n${m.img ? '🖼 [picture]  \n' : ''}${m.text}  \n` + (m.tr ? `> ${m.tr}  \n` : '') + mk + (m.fix ? `> ✔ Better: ${m.fix}  \n` : '') + (m.note ? `> 💬 ${m.note}  \n` : '') + '\n'; }
   download(convTitle(c).en.replace(/[\\/:*?"<>|]/g, '-') + '.md', md, 'text/markdown');
 };
 $('#exportJson').onclick = () => download('bilingual-board-backup-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(S, null, 1), 'application/json');
@@ -1713,6 +1764,7 @@ $('#who').onclick = e => {
   const b = e.target.closest('[data-sp]'); if (b) { S.speaker = b.dataset.sp; save(); renderComposer(); $('#draft').focus(); } };
 $('#phrases').onclick = e => { const b = e.target.closest('[data-ph]'); if (!b) return; const t = $('#draft'); t.value = (t.value ? t.value + ' ' : '') + b.dataset.ph; autoGrow(); t.focus(); const i = t.value.indexOf('___'); if (i >= 0) t.setSelectionRange(i, i + 3); };
 $('#timeline').onclick = e => {
+  const eg = e.target.closest('[data-evgo]'); if (eg) return jumpTo(eg.dataset.evgo);
   const msgEl = e.target.closest('.msg'); if (!msgEl) return; const m = conv().messages.find(x => x.id === msgEl.dataset.id); if (!m) return;
   const mk = e.target.closest('[data-mk]');
   if (mk && !String(getSelection()).trim()) return showMarkMenu(m, mk.dataset.mk, mk);
@@ -1787,13 +1839,17 @@ $('#tabChats').onclick = () => { sideTab = 'chats'; renderSide(); };
 $('#tabVocab').onclick = () => { sideTab = 'vocab'; renderSide(); };
 $('#sideList').onclick = e => {
   if (dragJustEnded) return;
+  if (e.target.closest('#binBtn')) { binOpen = !binOpen; if (binOpen) lsSet('bb-bin-seen', String(Date.now())); renderSide(); return; }
+  const br = e.target.closest('[data-binrestore]'); if (br) { const c = S.conversations.find(c => c.id === br.dataset.binrestore); if (c) { restoreConv(c); S.activeId = c.id; save(); renderAll(); toast('Restored 已还原'); } return; }
+  const bp = e.target.closest('[data-binpurge]'); if (bp) { const c = S.conversations.find(c => c.id === bp.dataset.binpurge);
+    if (c && confirm(`Delete “${convTitle(c).en}” for good? This can't be undone, on both devices.\n彻底删除这个对话？双方都无法再恢复。`)) { purgeConv(c); save(); renderAll(); toast('Deleted for good 已彻底删除'); } return; }
   const cr = e.target.closest('[data-cref]'); if (cr) { e.stopPropagation(); askRefresh(S.conversations.find(c => c.id === cr.dataset.cref)); return; }
   const pn = e.target.closest('[data-pin]'); if (pn) { e.stopPropagation(); togglePin(pn.dataset.pin); return; }
   const ce = e.target.closest('[data-cedit]'); if (ce) { e.stopPropagation(); openConvDlg(ce.dataset.cedit); return; }
   const cf = e.target.closest('[data-cf]'); if (cf) { catFilter = cf.dataset.cf; renderSide(); return; }
   const del = e.target.closest('[data-del]'), vdel = e.target.closest('[data-vdel]'), say = e.target.closest('[data-say]'), cv = e.target.closest('.conv');
   if (del) { e.stopPropagation(); const c = S.conversations.find(c => c.id === del.dataset.del);
-    if (confirm(`Delete chat “${convTitle(c).en}” (${c.messages.length} messages)? 删除整个对话？`)) { S.conversations = S.conversations.filter(x => x !== c); markDeleted(c.id); if (!S.conversations.length) S.conversations.push(newConv()); if (S.activeId === c.id) S.activeId = S.conversations[0].id; save(); renderAll(); } return; }
+    if (confirm(`Move chat “${convTitle(c).en}” (${c.messages.length} messages) to Recently deleted?\nYou and your friend can restore it for ${BIN_DAYS} days, then it is deleted for good.\n把这个对话移到“最近删除”？双方 ${BIN_DAYS} 天内都可以还原，之后彻底删除。`)) { trashConv(c); conv(); save(); renderAll(); toast('Moved to Recently deleted 已移到最近删除'); } return; }
   if (vdel) { S.vocab = S.vocab.filter(v => v.id !== vdel.dataset.vdel); markDeleted(vdel.dataset.vdel); save(); renderSide(); return; }
   if (say) { e.stopPropagation(); const v = S.vocab.find(v => v.id === say.dataset.say); if (v) speak(v.en, 'en'); return; }
   const vf = e.target.closest('[data-vf]'); if (vf) { vFilter = vf.dataset.vf === 'all' ? 'all' : +vf.dataset.vf; renderSide(); return; }
@@ -1804,7 +1860,7 @@ $('#title').onclick = () => openConvDlg(conv().id);
 $('#search').oninput = e => { query = e.target.value.trim(); renderTimeline(); };
 $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
 $('#settingsBtn').onclick = () => {
-  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillMeMenu(); fillPlaceMenus(); $('#sTrFold').value = lsGet('bb-trfold'); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
+  const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillMeMenu(); fillPlaceMenus(); $('#sTrFold').value = lsGet('bb-trfold'); $('#sRcpt').checked = !!(ME && S.rcpt?.[ME]?.on); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
   $('#sGEngine').value = gEng(); $('#sGEngine').disabled = WEB; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
   $('#sEngine').value = s.engine; $('#sRate').value = s.rate; $('#sScale').value = s.scale; engineStatus(); renderSyncBox(); $('#settingsDlg').showModal();
 };
@@ -1875,6 +1931,8 @@ function fillMeMenu() {
   $('#sMe').value = ME;
 }
 $('#sMe').onchange = () => setMe($('#sMe').value);
+$('#sRcpt').onchange = () => { if (!ME) { $('#sRcpt').checked = false; return toast('Choose who uses this device first 请先选择这台设备是谁在用'); }
+  (S.rcpt ||= {})[ME] = { on: $('#sRcpt').checked, upd: Date.now() }; save(); markRead(); renderTimeline(); };
 $('#sTrFold').onchange = () => { lsSet('bb-trfold', $('#sTrFold').value); trState_.clear(); renderTimeline(); };
 // first visit of the web version: ask once who is using this device
 if (WEB && !lsGet('bb-me-set')) {
@@ -1896,7 +1954,7 @@ async function resumeTranslations() {
   for (const c of S.conversations) for (const m of c.messages)
     if (m.tr === undefined && !pending.has(m.id)) { pending.add(m.id); await translateMsg(m); pending.delete(m.id); }
 }
-renderAll(); pullServer().then(resumeTranslations);
+purgeOld(); renderAll(); pullServer().then(resumeTranslations);
 
 // ----- English-only interface: one click (top-right button) or open the page with ?lang=en (?lang=zh = both languages again).
 // It only hides the Chinese hints in menus, buttons and labels; chat messages, translations, phrases and vocab are never touched.

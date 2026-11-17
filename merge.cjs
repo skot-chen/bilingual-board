@@ -28,7 +28,10 @@
         // title, category and pin: take them exactly from the copy that changed them last — including ones it removed
         // (an unpinned chat has no `pin`; copying the other copy first must not bring the old pin back)
         const metaSrc = prev && (prev.metaUpd || 0) > (c.metaUpd || 0) ? prev : c;
-        for (const k of ['title', 'titleZh', 'titleBy', 'titleSet', 'cat', 'pin', 'metaUpd']) { if (k in metaSrc) merged[k] = metaSrc[k]; else delete merged[k]; }
+        for (const k of ['title', 'titleZh', 'titleBy', 'titleSet', 'cat', 'pin', 'trashed', 'metaUpd']) { if (k in metaSrc) merged[k] = metaSrc[k]; else delete merged[k]; }
+        // read receipts: how far each person has read — never goes back
+        const rd = Object.assign({}, prev && prev.read); for (const [k, v] of Object.entries(c.read || {})) rd[k] = Math.max(rd[k] || 0, v || 0);
+        if (Object.keys(rd).length) merged.read = rd;
         convs.set(c.id, merged);
       }
     }
@@ -39,7 +42,12 @@
       if (!prev || (v.upd || v.ts || 0) >= (prev.upd || prev.ts || 0)) vocab.set(v.id, v);
     }
 
+    // change log (deleted messages, moved messages, role changes, chats moved to the bin): keep every entry from both copies
+    const ev = new Map(); for (const src of [older, newer]) for (const e of src.events || []) ev.set(e.id, e);
+    // read-receipt switches: each person's own switch, whichever changed last
+    const rcpt = {}; for (const src of [older, newer]) for (const [k, v] of Object.entries(src.rcpt || {})) if (!rcpt[k] || (v.upd || 0) >= (rcpt[k].upd || 0)) rcpt[k] = v;
     const out = Object.assign({}, newer, {
+      events: [...ev.values()].sort((x, y) => x.ts - y.ts).slice(-800), rcpt,
       updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0),
       conversations: [...convs.values()],
       vocab: [...vocab.values()],
