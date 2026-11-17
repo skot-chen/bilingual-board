@@ -146,6 +146,10 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .eng-item.off{opacity:.55}.eng-need{display:block;color:#b45309}.eng-get{display:block;padding:8px 10px;font-size:.85em;text-decoration:none;border-top:1px solid rgba(127,127,127,.25)}
 @media (max-width:600px){.row:has(> #checkBtn){flex-wrap:wrap;row-gap:6px}}
 [hidden]{display:none!important}
+.title-refresh{font-size:.8em;font-weight:600;padding:4px 10px;border-radius:999px;border:1.5px solid var(--a);color:var(--a);background:var(--a-soft);white-space:nowrap;cursor:pointer}
+.title-refresh:hover{background:var(--a);color:#fff}.title-refresh:disabled{opacity:.6;cursor:wait}
+.title-refresh .tr-short{display:none}
+@media (max-width:700px){.title-refresh .tr-long{display:none}.title-refresh .tr-short{display:inline}.title-refresh{padding:4px 8px}}
 #meDlg .me-btns{display:flex;flex-direction:column;gap:8px;margin:12px 0}#meDlg .me-btns button{text-align:left;padding:10px 12px}#meDlg .me-btns small{display:block;opacity:.75}
 .lang-btn{font-size:.8em;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
 .sync-btns{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}#syncHow{margin:4px 0 8px}#syncHow small{line-height:1.7}
@@ -231,7 +235,11 @@ dialog h2{margin:0 0 12px;font-size:1.1em}
 .mtool .sw{display:inline-block;width:.8em;height:.8em;border-radius:3px;vertical-align:-1px;margin-right:4px}
 .toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:10px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.show{opacity:.95}
-header > *{flex-shrink:0} header h1{flex-shrink:1}
+header > *{flex-shrink:0} header h1{flex:1 1 240px;min-width:110px}
+header #stats,header #saveState{flex-shrink:6;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:1000px){header #stats{display:none}}
+header .search{flex-shrink:6;min-width:90px}
+@media (max-width:600px){header h1{min-width:60px;flex-basis:80px}header #saveState{display:none}header .search{min-width:56px;width:70px}header .lang-btn{padding:4px 7px}}
 @media (max-width:1050px){#stats{display:none} .search{width:130px}}
 @media (min-width:761px){#menuBtn{display:none}}
 @media (max-width:760px){.app{grid-template-columns:1fr} aside{display:none} aside.open{display:flex;position:fixed;inset:0 20% 0 0;z-index:5;box-shadow:0 0 40px #0005}
@@ -256,7 +264,7 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
     <header>
       <button class="icon" id="menuBtn" title="Menu" aria-label="Menu">☰</button>
       <h1 id="title" title="Click to change the title or category · 点击修改标题或分类"></h1>
-      <button class="icon" id="titleRefresh" type="button" title="Update the title from the latest chat · 根据最近的聊天更新标题" aria-label="Update title">🔄</button>
+      <button id="titleRefresh" class="title-refresh" type="button" title="Update the title from the latest chat · 根据最近的聊天更新标题" aria-label="Update title">🔄 <span class="tr-long">Update title 更新标题</span><span class="tr-short">标题</span></button>
       <span class="pill" id="stats"></span>
       <span class="pill" id="saveState">…</span>
       <input class="search" id="search" placeholder="Search 搜索…" aria-label="Search">
