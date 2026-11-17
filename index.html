@@ -30,7 +30,7 @@ button:hover{border-color:var(--muted)}
 button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .icon{border:none;background:none;padding:.2em .35em;border-radius:8px;opacity:.75}
 .icon:hover{opacity:1;background:var(--line)}
-.app{display:grid;grid-template-columns:260px 1fr;height:100vh}
+.app{display:grid;grid-template-columns:260px 1fr;height:100vh;height:var(--appH,100dvh)}
 aside{border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
 .brand{padding:14px 16px 6px;font-weight:700;font-size:1.05em}
 .brand small{display:block;font-weight:400;color:var(--muted);font-size:.8em}
@@ -148,7 +148,7 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .replybar .quote{margin:0;cursor:default;flex:1}.replybar .x{flex:none}
 .acts{margin-top:6px;display:flex;gap:2px;flex-wrap:wrap;opacity:.0;transition:opacity .15s}
 .msg:hover .acts,.msg:focus-within .acts{opacity:1}
-@media (hover:none){.acts{opacity:1}}
+@media (hover:none){.acts{opacity:1;display:none}.msg.acts-on .acts{display:flex}}
 .acts .icon{font-size:.85em}
 mark{background:#fde68a;color:#000;border-radius:3px}
 .empty{color:var(--muted);text-align:center;margin-top:12vh;line-height:1.8}
@@ -281,6 +281,26 @@ header .search{flex-shrink:6;min-width:90px}
 @media (max-width:760px){.app{grid-template-columns:1fr} aside{display:none} aside.open{display:flex;position:fixed;inset:0 20% 0 0;z-index:5;box-shadow:0 0 40px #0005}
   header{padding:8px 10px;gap:6px} .search{width:90px} #saveState{display:none} #timeline{padding:12px 10px}
   .bubble{max-width:84%} .who .hint{display:none}}
+#sideShade,.ph-btn{display:none}
+.dlg-head{display:flex;align-items:center;gap:8px;position:sticky;top:-1em;margin:-1em -1em 8px;padding:12px 1em 10px;background:var(--panel);border-bottom:1px solid var(--line);z-index:2}
+.dlg-head h2{margin:0;flex:1}.dlg-x{font-size:1.2em;min-width:40px;min-height:36px}
+dialog{overflow-x:hidden}
+@media (max-width:760px){
+  html,body{overflow:hidden}
+  #menuBtn{font-size:1.4em;opacity:1;min-width:42px;min-height:40px;padding:2px 8px}
+  #settingsBtn{margin-left:6px;min-width:38px;min-height:38px}
+  aside.open + #sideShade{display:block;position:fixed;inset:0;background:#0006;z-index:4}
+  #grip,#expandBtn{display:none}
+  .phrases{display:none}.composer.ph-on .phrases{display:flex}.ph-btn{display:inline-flex}
+  .composer{padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
+  .draft-wrap{display:flex;gap:6px;align-items:flex-end}.draft-wrap textarea{flex:1;min-width:0}.draft-wrap #sendBtn{flex:none;padding:.6em .9em}
+  #checkBtn .lbl{display:none}
+  textarea,input,select{font-size:max(16px,1em)}
+  #settingsDlg{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border:0;border-radius:0;padding-bottom:calc(1em + env(safe-area-inset-bottom))}
+  dialog{max-width:calc(100vw - 16px)}
+  dialog .field{flex-wrap:wrap}dialog .field > label{flex:1 1 100%}
+  dialog .field input[type=text],dialog .field input[type=password],dialog .field select,dialog .field .place,dialog .field .sync-lock{width:100%;flex:1 1 100%}
+}
 </style>
 <script src="vendor/pinyin-pro.js"></script>
 <script src="vendor/tz-countries.js"></script><!-- pinyin for Chinese text (MIT, pinyin-pro 3.29.5) -->
@@ -297,6 +317,7 @@ header .search{flex-shrink:6;min-width:90px}
     <div class="side-list" id="sideList"></div>
     <div class="side-foot" id="sideFoot"></div>
   </aside>
+  <div id="sideShade"></div>
   <main id="main">
     <header>
       <button class="icon" id="menuBtn" title="Menu" aria-label="Menu">☰</button>
@@ -324,12 +345,13 @@ header .search{flex-shrink:6;min-width:90px}
         <div class="seg mini" id="micLang" role="group" title="Voice input language 语音输入语言" aria-label="Voice language"><button type="button" data-ml="en-US">EN</button><button type="button" data-ml="zh-CN">中</button></div>
         <button id="micBtn" title="Voice input 语音输入" aria-label="Voice input">🎤</button>
         <button id="picBtn" type="button" title="Add a picture (or paste a screenshot with Ctrl+V) · 发图片（也可以 Ctrl+V 粘贴截图）" aria-label="Add a picture">🖼</button>
+        <button id="phBtn" type="button" class="ph-btn" title="Useful phrases 常用句" aria-label="Useful phrases">💬</button>
         <input type="file" id="picFile" accept="image/*" multiple hidden>
         <button id="expandBtn" type="button" title="Bigger / smaller input box 放大/缩小输入框">⤢ Bigger 放大</button>
         <span class="spacer"></span>
         <div class="eng-wrap"><button type="button" id="engineBtn" class="engine-q" aria-haspopup="menu" aria-expanded="false" title="Which checker 用哪个批改引擎"></button>
           <div class="eng-menu" id="engineMenu" role="menu"></div></div>
-        <button id="checkBtn" title="Check my English before sending · 发送前检查语法">✍️ Check 检查</button>
+        <button id="checkBtn" title="Check my English before sending · 发送前检查语法">✍️<span class="lbl"> Check 检查</span></button>
         <button id="helpBtn" title="Translate my draft into English · 帮我说成英文">中→EN</button>
         <button id="zhBtn" title="How to say my message in Chinese (with pinyin) · 用中文怎么说">EN→中</button>
         <button id="sendBtn" class="primary">Send</button>
@@ -342,7 +364,7 @@ header .search{flex-shrink:6;min-width:90px}
 </div>
 
 <dialog id="settingsDlg"><form method="dialog">
-  <h2>Settings · 设置</h2>
+  <div class="dlg-head"><h2>Settings · 设置</h2><button value="close" class="icon dlg-x" title="Close 关闭" aria-label="Close">✕</button></div>
   <div class="field"><label for="sNameA">Chinese speaker's name · 中文母语者的名字</label><input type="text" id="sNameA"></div>
   <div class="field"><label for="sNameB">English speaker's name · 英语母语者的名字</label><input type="text" id="sNameB"></div>
   <div class="field"><label for="sCtryA">Chinese speaker's region and place<br><small>中文母语者所在地区（不选 = 用这台电脑的时间）</small></label><span class="place"><select id="sCtryA"></select><select id="sTzA" hidden title="Time zone 时区"></select><input type="text" id="sCityA" placeholder="City, optional 城市（可不填）" maxlength="30"></span></div>
@@ -642,6 +664,7 @@ function purgeOld() { const old = S.conversations.filter(c => c.trashed && Date.
 const otherOf = sp => sp === 'A' ? 'B' : 'A';
 const rcptOn = () => !!(ME && S.rcpt?.[ME]?.on && S.rcpt?.[otherOf(ME)]?.on);
 // unread count on this device: the friend's messages newer than what this browser last showed (bb-seen: {chat id: time})
+const TOUCH = matchMedia('(hover:none) and (pointer:coarse)'), PHONE = matchMedia('(max-width:760px)');
 const TITLE0 = document.title;
 let seenMap = (() => { try { return JSON.parse(lsGet('bb-seen') || 'null'); } catch { return null; } })();
 const unreadIn = c => !ME || c.trashed ? 0 : c.messages.filter(m => m.speaker !== ME && m.ts > (seenMap?.[c.id] || 0)).length;
@@ -1528,7 +1551,7 @@ function renderComposer() {
   $('#helpBtn').style.display = $('#checkBtn').style.display = sp === 'A' ? '' : 'none';
   $('#zhBtn').style.display = sp === 'B' ? '' : 'none';
   setMicLang(sp === 'B' ? 'en-US' : (S.micLangA || 'en-US'));
-  $('#draft').placeholder = sp === 'A' ? 'Try English first… 先试着用英文写（卡住了点 中→EN）' : 'Type in English… (Enter to send)';
+  $('#draft').placeholder = sp === 'A' ? 'Try English first… 先试着用英文写（卡住了点 中→EN）' : (TOUCH.matches ? 'Type in English…' : 'Type in English… (Enter to send)');
 }
 function rerenderMsg(m) { const el = document.querySelector(`.msg[data-id="${m.id}"]`); if (el) el.outerHTML = msgHTML(m); else renderTimeline(); }
 
@@ -1794,7 +1817,7 @@ function updateExpandBtn() { $('#expandBtn').textContent = baseH() > 120 ? '⤡ 
 $('#expandBtn').onclick = () => { setH(baseH() > 120 ? 56 : innerHeight * 0.4); save(); $('#draft').focus(); };
 updateExpandBtn();
 autoGrow();
-$('#draft').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+$('#draft').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !TOUCH.matches) { e.preventDefault(); send(); } });
 document.addEventListener('keydown', e => { if (e.altKey && (e.key === 's' || e.key === 'S') && !ME) { e.preventDefault(); S.speaker = S.speaker === 'A' ? 'B' : 'A'; save(); renderComposer(); } });
 $('#sendBtn').onclick = send;
 $('#helpBtn').onclick = helpSayIt;
@@ -1831,7 +1854,7 @@ $('#timeline').onclick = e => {
 };
 $('#timeline').addEventListener('keydown', e => {
   if (!e.target.classList.contains('edit-ta')) return; const el = e.target.closest('.msg'); const m = conv().messages.find(x => x.id === el.dataset.id);
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); onMsgAction('editSave', m, el); }
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !TOUCH.matches) { e.preventDefault(); onMsgAction('editSave', m, el); }
   if (e.key === 'Escape') onMsgAction('editCancel', m, el);
 });
 
@@ -1918,6 +1941,32 @@ $('#sideList').onclick = e => {
 $('#title').onclick = () => openConvDlg(conv().id);
 $('#search').oninput = e => { query = e.target.value.trim(); renderTimeline(); };
 $('#menuBtn').onclick = () => $('#side').classList.toggle('open');
+$('#sideShade').onclick = () => $('#side').classList.remove('open');
+// Phones: swipe right on the chat to open the chat list, swipe left to close it.
+{ let sw = null;
+  document.addEventListener('touchstart', e => { if (!PHONE.matches || e.touches.length > 1) { sw = null; return; } const t = e.touches[0];
+    sw = { x: t.clientX, y: t.clientY, t: Date.now(), ok: !e.target.closest('textarea, input, select, .phrases, .row, .who, dialog, .edit-box') }; }, { passive: true });
+  document.addEventListener('touchend', e => { const s = sw; sw = null; if (!s || Date.now() - s.t > 700) return;
+    const t = e.changedTouches[0], dx = t.clientX - s.x, dy = t.clientY - s.y; if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+    const side = $('#side'), open = side.classList.contains('open');
+    if (dx < 0 && open) side.classList.remove('open');
+    else if (dx > 0 && !open && s.ok && !document.querySelector('dialog[open]') && !String(getSelection())) side.classList.add('open'); }, { passive: true }); }
+// Phones: tap a message to show its buttons (Reply, Edit, …); tap again or another message to hide them.
+$('#timeline').addEventListener('click', e => { if (!TOUCH.matches) return; const msg = e.target.closest('.msg');
+  if (!msg || e.target.closest('button, a, input, textarea, select, img, .acts, .edit-box') || String(getSelection())) return;
+  const was = msg.classList.contains('acts-on'); document.querySelectorAll('.msg.acts-on').forEach(x => x.classList.remove('acts-on')); if (!was) msg.classList.add('acts-on'); });
+$('#phBtn').onclick = () => $('#composer').classList.toggle('ph-on');
+$('#phrases').addEventListener('click', e => { if (PHONE.matches && e.target.closest('[data-ph]')) $('#composer').classList.remove('ph-on'); });
+// Phones: Send sits next to the message box.
+function placeSend() { const b = $('#sendBtn'); if (PHONE.matches) $('.draft-wrap').append(b); else $('#checkBtn').closest('.row').append(b); }
+PHONE.addEventListener('change', placeSend); placeSend();
+// Settings: tap outside the box to close it (on a computer; on a phone it fills the screen and has ✕ at the top).
+$('#settingsDlg').addEventListener('click', e => { const d = e.currentTarget; if (e.target !== d) return; const r = d.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close('close'); });
+// Keep the app exactly as tall as the visible screen (the phone keyboard and Safari's bars change it).
+if (window.visualViewport) { const fitVV = () => { if (Math.abs(visualViewport.scale - 1) > 0.01) return;
+    document.documentElement.style.setProperty('--appH', visualViewport.height + 'px'); if (PHONE.matches && scrollY) scrollTo(0, 0); };
+  visualViewport.addEventListener('resize', fitVV); fitVV(); }
 $('#settingsBtn').onclick = () => {
   const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillMeMenu(); fillPlaceMenus(); $('#sTrFold').value = lsGet('bb-trfold'); $('#sRcpt').checked = !!(ME && S.rcpt?.[ME]?.on); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
   $('#sGEngine').value = gEng(); $('#sGEngine').disabled = WEB; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
