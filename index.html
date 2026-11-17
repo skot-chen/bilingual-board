@@ -109,7 +109,7 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .empty-cats img{height:110px;display:block} .empty-cats img+img{margin-left:-30px}
 .empty-cat{height:80px;display:block;margin:0 auto 10px}
 @media (prefers-color-scheme:dark){.empty-cats img,.empty-cat,.brand-cats img{filter:brightness(.92)}}
-.bubble{max-width:min(680px,78%);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px}
+.bubble{min-width:0;overflow-wrap:anywhere;word-break:break-word;max-width:min(680px,78%);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px}
 .msg:not(.right) .bubble{border-top-left-radius:4px;border-left:3px solid var(--sc)}
 .msg.right .bubble{border-top-right-radius:4px;border-right:3px solid var(--sc)}
 .meta{font-size:.75em;color:var(--muted);display:flex;gap:8px;margin-bottom:4px}
@@ -131,6 +131,7 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 #cSugg{display:flex;flex-direction:column;gap:4px;margin:6px 0 2px}#cSugg button{text-align:left;padding:6px 8px;font-size:.85em}#cSugg small{display:block;opacity:.7}
 .tr.hidden .txt{filter:blur(5px);cursor:pointer;user-select:none}
 .tr.err{color:#b91c1c}
+.keep-row{margin-top:8px;display:flex;justify-content:flex-end}.keep-row .icon{font-size:.8em;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:2px 10px;opacity:1}
 .fix{margin-top:8px;background:var(--ok-soft);border-radius:10px;padding:6px 10px;color:var(--ok);line-height:1.45}
 .fix .lab{font-weight:700;font-size:.78em}
 .fix .orig-strike{color:var(--muted);text-decoration:line-through;font-size:.85em}
@@ -148,7 +149,7 @@ header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-over
 .replybar .quote{margin:0;cursor:default;flex:1}.replybar .x{flex:none}
 .acts{margin-top:6px;display:flex;gap:2px;flex-wrap:wrap;opacity:.0;transition:opacity .15s}
 .msg:hover .acts,.msg:focus-within .acts{opacity:1}
-@media (hover:none){.acts{opacity:1;display:none}.msg.acts-on .acts{display:flex}}
+@media (hover:none){.acts{opacity:1;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain}.acts::-webkit-scrollbar{display:none}.acts .icon{flex:none}}
 .acts .icon{font-size:.85em}
 mark{background:#fde68a;color:#000;border-radius:3px}
 .empty{color:var(--muted);text-align:center;margin-top:12vh;line-height:1.8}
@@ -291,7 +292,9 @@ dialog{overflow-x:hidden}
   #menuBtn{font-size:1.4em;opacity:1;min-width:42px;min-height:40px;padding:2px 8px}
   #settingsBtn{margin-left:6px;min-width:38px;min-height:38px}
   aside.open + #sideShade{display:block;position:fixed;inset:0;background:#0006;z-index:4}
-  #grip,#expandBtn{display:none}
+  #expandBtn{display:none}
+  .grip{margin:-8px -10px 2px}
+  #draft{min-height:44px;padding-top:9px;padding-bottom:9px}
   .phrases{display:none}.composer.ph-on .phrases{display:flex}.ph-btn{display:inline-flex}
   .composer{padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
   .draft-wrap{display:flex;gap:6px;align-items:flex-end}.draft-wrap textarea{flex:1;min-width:0}.draft-wrap #sendBtn{flex:none;padding:.6em .9em}
@@ -1509,7 +1512,9 @@ function msgHTML(m) {
         (m.ai.natUnplaced || []).map(e => `<li><b>“${esc(e.original)}”</b> → <b>${esc(e.fix)}</b> ${esc(e.why_en)}${e.why_zh ? ' · ' + esc(e.why_zh) : ''}</li>`).join('')}</ul></details>` : ''}
       ${m.ai.feedback ? `<div class="fb">💡 ${esc(m.ai.feedback)}</div>` : ''}
       ${(m.ai.unplaced || []).map(e => `<div class="fb">• “${esc(e.original)}” → <b>${esc(e.fix)}</b> ${esc(e.why_zh || e.why_en)}</div>`).join('')}</div>` : '';
-  const fix = corrected + ai + (!m.fix ? '' : `<div class="fix"><span class="lab">✔ More natural · 更地道：</span> ${highlight(m.fix, query)} <button class="icon" data-act="sayfix">🔊</button>${m.fixZh ? `<div style="color:var(--muted);font-size:.85em">${esc(m.fixZh)}</div>` : ''}</div>`);
+  const autoDone = !m.checking && !m.keep && (m.corrected || m.ai || (m.marks || []).some(k => k.by === 'auto'));
+  const keepBtn = autoDone ? `<div class="keep-row"><button type="button" class="icon" data-act="keep" title="I wrote it this way on purpose: remove the corrections · 我是故意这样写的：去掉批改">↺ Keep my wording 保持原样</button></div>` : '';
+  const fix = keepBtn + corrected + ai + (!m.fix ? '' : `<div class="fix"><span class="lab">✔ More natural · 更地道：</span> ${highlight(m.fix, query)} <button class="icon" data-act="sayfix">🔊</button>${m.fixZh ? `<div style="color:var(--muted);font-size:.85em">${esc(m.fixZh)}</div>` : ''}</div>`);
   const note = m.note ? `<div class="note">💬 ${esc(m.note)}</div>` : '';
   const enText = m.lang === 'en' ? m.text : (m.tr || '');
   const edited = m.edited ? `<span class="edited" title="Original 原文: ${esc(m.history?.[0]?.text || '')}">✏️ edited 已修改</span>` : '';
@@ -1552,7 +1557,7 @@ function renderComposer() {
   $('#helpBtn').style.display = $('#checkBtn').style.display = sp === 'A' ? '' : 'none';
   $('#zhBtn').style.display = sp === 'B' ? '' : 'none';
   setMicLang(sp === 'B' ? 'en-US' : (S.micLangA || 'en-US'));
-  $('#draft').placeholder = sp === 'A' ? 'Try English first… 先试着用英文写（卡住了点 中→EN）' : (TOUCH.matches ? 'Type in English…' : 'Type in English… (Enter to send)');
+  $('#draft').placeholder = sp === 'A' ? (PHONE.matches ? 'English first… 先用英文写' : 'Try English first… 先试着用英文写（卡住了点 中→EN）') : (TOUCH.matches ? 'Type in English…' : 'Type in English… (Enter to send)');
 }
 function rerenderMsg(m) { const el = document.querySelector(`.msg[data-id="${m.id}"]`); if (el) el.outerHTML = msgHTML(m); else renderTimeline(); }
 
@@ -1650,9 +1655,11 @@ async function onMsgAction(act, m, el) {
       const old = m.text; m.text = v; m.edited = Date.now(); m.lang = isZh(v) ? 'zh' : 'en'; m.marks = (m.marks || []).filter(k => k.by !== 'auto'); remapMarks(m, old);
       const wasChecked = m.checked; delete m.corrected; delete m.checked; delete m.ai;
       save(); translateMsg(m); toast('Saved 已修改');
-      if (m.lang === 'en' && (wasChecked || (m.speaker === 'A' && S.settings.autoGrammar))) checkMessage(m, true);
+      if (m.lang === 'en' && !m.keep && (wasChecked || (m.speaker === 'A' && S.settings.autoGrammar))) checkMessage(m, true);
       break; }
-    case 'grammar': checkMessage(m); break;
+    case 'grammar': delete m.keep; checkMessage(m); break;
+    case 'keep': m.keep = Date.now(); m.marks = (m.marks || []).filter(k => k.by !== 'auto'); delete m.corrected; delete m.ai; delete m.checked;
+      save(); rerenderMsg(m); toast('Kept as you wrote it 已保持原样'); break;
     case 'saycorr': speak(m.corrected, 'en'); break;
     case 'sayai': speak(m.ai.natural, 'en'); break;
     case 'reveal': m.revealed = true; save(); rerenderMsg(m); break;
@@ -1800,22 +1807,24 @@ $('#importFile').onchange = async e => {
 
 // ---------- wiring ----------
 // Input box height: user's own size (drag the corner or ⤢) is the minimum; it grows with long text up to 70% of the screen.
-function baseH() { return S.settings.draftH || 56; }
+const MIN_H = () => PHONE.matches ? 44 : 56;
+function baseH() { return PHONE.matches ? (+lsGet('bb-draftH-phone') || 44) : S.settings.draftH || 56; }
 function autoGrow() {
-  const t = $('#draft'); const max = innerHeight * 0.7;
-  t.style.height = baseH() + 'px';
+  const t = $('#draft'); const max = innerHeight * (PHONE.matches ? 0.45 : 0.7);
+  t.style.height = baseH() + 'px'; if (!t.value) return;
   if (t.scrollHeight > t.clientHeight) t.style.height = Math.min(t.scrollHeight + 2, max) + 'px';
 }
 $('#draft').addEventListener('input', autoGrow);
 // Drag the grip bar above the composer: up = taller input box, down = shorter.
 let drag = null;
-const setH = h => { S.settings.draftH = Math.round(Math.max(56, Math.min(h, innerHeight * 0.7))); autoGrow(); updateExpandBtn(); };
+const setH = h => { const v = Math.round(Math.max(MIN_H(), Math.min(h, innerHeight * (PHONE.matches ? 0.45 : 0.7))));
+  if (PHONE.matches) lsSet('bb-draftH-phone', v); else S.settings.draftH = v; autoGrow(); updateExpandBtn(); };
 $('#grip').addEventListener('pointerdown', e => { drag = { y: e.clientY, h: $('#draft').offsetHeight }; $('#grip').setPointerCapture(e.pointerId); $('#grip').classList.add('on'); e.preventDefault(); });
 $('#grip').addEventListener('pointermove', e => { if (drag) setH(drag.h + (drag.y - e.clientY)); });
 $('#grip').addEventListener('pointerup', () => { if (!drag) return; drag = null; $('#grip').classList.remove('on'); save(); });
-$('#grip').addEventListener('dblclick', () => { setH(baseH() > 120 ? 56 : innerHeight * 0.4); save(); });
+$('#grip').addEventListener('dblclick', () => { setH(baseH() > 120 ? MIN_H() : innerHeight * 0.4); save(); });
 function updateExpandBtn() { $('#expandBtn').textContent = baseH() > 120 ? '⤡ Smaller 缩小' : '⤢ Bigger 放大'; }
-$('#expandBtn').onclick = () => { setH(baseH() > 120 ? 56 : innerHeight * 0.4); save(); $('#draft').focus(); };
+$('#expandBtn').onclick = () => { setH(baseH() > 120 ? MIN_H() : innerHeight * 0.4); save(); $('#draft').focus(); };
 updateExpandBtn();
 autoGrow();
 $('#draft').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !TOUCH.matches) { e.preventDefault(); send(); } });
@@ -1952,15 +1961,11 @@ $('#sideShade').onclick = () => $('#side').classList.remove('open');
     const side = $('#side'), open = side.classList.contains('open');
     if (dx < 0 && open) side.classList.remove('open');
     else if (dx > 0 && !open && s.ok && !document.querySelector('dialog[open]') && !String(getSelection())) side.classList.add('open'); }, { passive: true }); }
-// Phones: tap a message to show its buttons (Reply, Edit, …); tap again or another message to hide them.
-$('#timeline').addEventListener('click', e => { if (!TOUCH.matches) return; const msg = e.target.closest('.msg');
-  if (!msg || e.target.closest('button, a, input, textarea, select, img, .acts, .edit-box') || String(getSelection())) return;
-  const was = msg.classList.contains('acts-on'); document.querySelectorAll('.msg.acts-on').forEach(x => x.classList.remove('acts-on')); if (!was) msg.classList.add('acts-on'); });
 $('#phBtn').onclick = () => $('#composer').classList.toggle('ph-on');
 $('#phrases').addEventListener('click', e => { if (PHONE.matches && e.target.closest('[data-ph]')) $('#composer').classList.remove('ph-on'); });
 // Phones: Send sits next to the message box.
 function placeSend() { const b = $('#sendBtn'); if (PHONE.matches) $('.draft-wrap').append(b); else $('#checkBtn').closest('.row').append(b); }
-PHONE.addEventListener('change', placeSend); placeSend();
+PHONE.addEventListener('change', () => { placeSend(); autoGrow(); renderComposer(); }); placeSend(); autoGrow();
 // Settings: tap outside the box to close it (on a computer; on a phone it fills the screen and has ✕ at the top).
 $('#settingsDlg').addEventListener('click', e => { const d = e.currentTarget; if (e.target !== d) return; const r = d.getBoundingClientRect();
   if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close('close'); });
