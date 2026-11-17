@@ -15,7 +15,8 @@ Works on **Windows** and **macOS**. No accounts and no cloud needed. Chats stay 
 - Chinese speaker 中文母语者: https://skot-chen.github.io/bilingual-board/?me=zh
 - English speaker: https://skot-chen.github.io/bilingual-board/?me=en&lang=en
 
-You can change this in ⚙️ Settings → *Who uses this device*. On one shared computer, choose *Shared computer* to switch speakers as before.
+To change it, tap the 🔒 name button above the message box (it asks before switching), or use ⚙️ Settings → *Who uses this device*. On one shared computer, choose *Shared* to switch speakers as before.
+Each message shows the device it came from (📱 iPhone, 💻 Windows…). If a device sends as the person who doesn't usually use it, the message gets a ⚠, and **⇄** moves it to the right person.
 
 The web version runs in your browser. Chats are saved only in that browser, and grammar checking uses LanguageTool (spelling and basic grammar). For the free AI checker that reads the scene, download the desktop version below.
 网页版直接在浏览器里用，聊天记录只存在这个浏览器里，批改只能用 LanguageTool。想用看场景的免费 AI 批改，请按下面的步骤下载电脑版。

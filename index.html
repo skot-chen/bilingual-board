@@ -97,6 +97,14 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .who .seg button.on.B{background:var(--b-soft);box-shadow:inset 0 0 0 1px var(--b)} .who .seg button.on.B .dot{background:var(--b);opacity:1}
 .seg.mini{padding:2px;align-self:center} .seg.mini button{padding:.25em .6em;font-size:.82em}
 .seg.mini button.on{background:var(--panel);color:var(--ink);font-weight:600;box-shadow:0 1px 2px #0002}
+.who{position:relative}
+.who .role-btn{display:inline-flex;align-items:center;gap:6px;font-weight:600;padding:5px 10px;border-radius:999px}
+.who .role-btn.A{background:var(--a-soft);box-shadow:inset 0 0 0 1.5px var(--a)} .who .role-btn.B{background:var(--b-soft);box-shadow:inset 0 0 0 1.5px var(--b)}
+.who .role-btn img{width:22px;height:22px;border-radius:50%}
+.who .role-more{padding:4px 8px;font-size:.8em}
+.role-menu{left:0;right:auto;bottom:calc(100% + 6px);min-width:280px}
+#sendBtn.as-A{background:var(--a);border-color:var(--a);color:#fff} #sendBtn.as-B{background:var(--b);border-color:var(--b);color:#fff}
+.meta .via{opacity:.75;font-size:.9em} .meta .warn{color:#dc2626;font-weight:600}
 .who .hint{color:var(--muted);font-size:.75em;margin-left:auto}
 .field .place{display:flex;gap:6px;flex-wrap:wrap}.field .place select,.field .place input{min-width:0;flex:1 1 140px}
 .eng-item.off{opacity:.55}.eng-need{display:block;color:#b45309}.eng-get{display:block;padding:8px 10px;font-size:.85em;text-decoration:none;border-top:1px solid rgba(127,127,127,.25)}
@@ -324,56 +332,71 @@ let ME = (() => { const q = new URLSearchParams(location.search).get('me');
   if (q) { lsSet('bb-me', q === 'zh' ? 'A' : q === 'en' ? 'B' : ''); lsSet('bb-me-set', '1'); }
   const v = lsGet('bb-me'); return v === 'A' || v === 'B' ? v : ''; })();
 const isRight = sp => ME ? sp === ME : sp === 'B';
+const DEV = (() => { let d = lsGet('bb-dev'); if (!d) { d = Math.random().toString(36).slice(2, 10); lsSet('bb-dev', d); } return d; })();
+const DEV_NAME = (() => { const u = navigator.userAgent;
+  return /iPhone/.test(u) ? 'iPhone' : /iPad/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android' : /Macintosh|Mac OS/.test(u) ? 'Mac' : /Windows/.test(u) ? 'Windows' : 'Browser'; })();
+const devIcon = n => /iPhone|Android/.test(n) ? '📱' : /iPad/.test(n) ? '📱' : '💻';
+// A device's "usual person" = whoever sent most of its messages (needs 3+). A message from that device as the OTHER person gets a ⚠.
+function usualOf(devId) {
+  const n = { A: 0, B: 0 };
+  for (const c of S.conversations) for (const m of c.messages) if (m.via && m.via.d === devId) n[m.speaker]++;
+  if (n.A + n.B < 3) return '';
+  return n.A > n.B ? 'A' : n.B > n.A ? 'B' : '';
+}
 function setMe(v) { ME = v === 'A' || v === 'B' ? v : ''; lsSet('bb-me', ME); lsSet('bb-me-set', '1'); if (ME) S.speaker = ME; save(); renderAll(); }
 const GH = { token: lsGet('bb-gh-token'), repo: lsGet('bb-gh-repo') || (location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] + '/bilingual-board-data' : ''),
   busy: false, again: false, timer: 0, msg: '' };
 const b64e = str => { const b = new TextEncoder().encode(str); let o = ''; for (let i = 0; i < b.length; i += 0x8000) o += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(o); };
 const b64d = str => new TextDecoder().decode(Uint8Array.from(atob(str.replace(/\s/g, '')), c => c.charCodeAt(0)));
 const ghFetch = (path, opt = {}, accept = 'application/vnd.github+json') => fetch('https://api.github.com/repos/' + GH.repo + path,
-  { cache: 'no-store', ...opt, headers: { Authorization: 'Bearer ' + GH.token, Accept: accept, ...(opt.body ? { 'content-type': 'application/json' } : {}) } });
+  { cache: 'no-store', method: opt.method, body: opt.body,
+    headers: { Authorization: 'Bearer ' + GH.token, Accept: accept, ...(opt.body ? { 'content-type': 'application/json' } : {}), ...(opt.h || {}) } });
 const ghErr = st => st === 401 ? '✗ Key invalid or expired · 钥匙无效或过期'
   : st === 403 || st === 404 ? '✗ This key cannot write to ' + GH.repo + ' · 钥匙没有这个仓库的写入权限（Contents: Read and write）'
   : st === 'public' ? '✗ ' + GH.repo + ' is public — use a PRIVATE repository · 这个仓库是公开的，聊天会被所有人看到，请用私有仓库'
   : '✗ Sync failed, will try again · 同步失败，稍后再试 ' + (st || '');
 function syncMsg(t) { GH.msg = t; const el = $('#syncMsg'); if (el) el.textContent = t; }
-async function ghSync() {
+// GH.dirty: this device has changes not uploaded yet. GH.etag/sha/remote: the last copy seen on GitHub, so a quick
+// "anything new?" check (If-None-Match → 304) costs nothing and doesn't count against GitHub's hourly limit.
+async function ghSync(quiet) {
   if (!GH.token || !GH.repo) return;
   if (GH.busy) { GH.again = true; return; }
-  GH.busy = true; clearTimeout(GH.timer); syncMsg('⏳ Syncing… 正在同步');
+  GH.busy = true; clearTimeout(GH.timer); if (!quiet) syncMsg('⏳ Syncing… 正在同步');
+  let changed = !quiet;
   try {
     for (let attempt = 0; ; attempt++) {
-      let sha, remote = null;
-      const r = await ghFetch('/contents/' + GH_FILE);
-      if (r.ok) {
-        const j = await r.json(); sha = j.sha;
+      const r = await ghFetch('/contents/' + GH_FILE, attempt === 0 && GH.etag ? { h: { 'If-None-Match': GH.etag } } : {});
+      if (r.status === 304) { if (!GH.dirty) break; }               // nothing new on GitHub, nothing to upload
+      else if (r.ok) {
+        const j = await r.json(); GH.sha = j.sha; GH.etag = r.headers.get('etag') || '';
         const txt = j.content ? b64d(j.content) : await (await ghFetch('/contents/' + GH_FILE, {}, 'application/vnd.github.raw')).text(); // big files come without content
-        remote = JSON.parse(txt);
-      } else if (r.status !== 404) throw r.status;
-      if (remote && Array.isArray(remote.conversations)) {
-        const before = JSON.stringify(S.conversations) + S.activeId;
-        const keepSp = S.speaker, keepId = S.activeId;
-        S = mergeBoard(S, remote); S.settings = renameOld(Object.assign(freshState().settings, S.settings));
-        S.speaker = ME || keepSp; if (S.conversations.some(c => c.id === keepId)) S.activeId = keepId;
-        lsSet(KEY, JSON.stringify(S));
-        if (JSON.stringify(S.conversations) + S.activeId !== before) { renderAll(); if (!WEB) pushServer(); }
-      }
+        GH.remote = JSON.parse(txt);
+        if (GH.remote && Array.isArray(GH.remote.conversations)) {
+          const before = JSON.stringify(S.conversations) + S.activeId;
+          const keepSp = S.speaker, keepId = S.activeId;
+          S = mergeBoard(S, GH.remote); S.settings = renameOld(Object.assign(freshState().settings, S.settings));
+          S.speaker = ME || keepSp; if (S.conversations.some(c => c.id === keepId)) S.activeId = keepId;
+          lsSet(KEY, JSON.stringify(S));
+          if (JSON.stringify(S.conversations) + S.activeId !== before) { changed = true; renderAll(); if (!WEB) pushServer(); }
+        }
+      } else if (r.status === 404) { GH.sha = undefined; GH.remote = null; GH.etag = ''; }
+      else throw r.status;
       const out = JSON.stringify(S);
-      if (remote && JSON.stringify(remote) === out) break; // nothing new to upload
-      const put = await ghFetch('/contents/' + GH_FILE, { method: 'PUT', body: JSON.stringify({ message: 'Update chats', content: b64e(out), ...(sha ? { sha } : {}) }) });
-      if (put.ok) break;
-      if ((put.status === 409 || put.status === 422) && attempt < 2) continue; // another device saved meanwhile: merge again
+      if (GH.remote && JSON.stringify(GH.remote) === out) { GH.dirty = false; break; } // nothing new to upload
+      const put = await ghFetch('/contents/' + GH_FILE, { method: 'PUT', body: JSON.stringify({ message: 'Update chats', content: b64e(out), ...(GH.sha ? { sha: GH.sha } : {}) }) });
+      if (put.ok) { const j = await put.json().catch(() => ({})); GH.sha = j.content && j.content.sha; GH.remote = JSON.parse(out); GH.etag = ''; GH.dirty = false; changed = true; break; }
+      if ((put.status === 409 || put.status === 422) && attempt < 2) { GH.etag = ''; continue; } // another device saved meanwhile: fetch, merge, try again
       throw put.status;
     }
-    const t = new Date().toTimeString().slice(0, 5);
-    syncMsg('✓ Synced 已同步 ' + t); setSaveState('☁ Synced 已同步 ' + t);
+    if (changed) { const t = new Date().toTimeString().slice(0, 5); syncMsg('✓ Synced 已同步 ' + t); setSaveState('☁ Synced 已同步 ' + t); }
   } catch (e) { syncMsg(ghErr(typeof e === 'number' ? e : 0)); setSaveState('⚠ Sync failed 同步失败'); }
   GH.busy = false;
-  if (GH.again) { GH.again = false; ghSync(); }
+  if (GH.again) { GH.again = false; ghSync(true); }
 }
-function ghSoon() { if (!GH.token) return; clearTimeout(GH.timer); GH.timer = setTimeout(ghSync, 3000); }
-// pick up messages written on another device
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ghSync(); });
-setInterval(() => { if (document.visibilityState === 'visible') ghSync(); }, 60000);
+function ghSoon(ms = 1500) { if (!GH.token) return; GH.dirty = true; clearTimeout(GH.timer); GH.timer = setTimeout(() => ghSync(true), ms); }
+// pick up messages written on another device: right away when the page comes back, then every 4 s while it is open
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ghSync(true); });
+setInterval(() => { if (document.visibilityState === 'visible') ghSync(true); }, 4000);
 function renderSyncBox() {
   const on = !!GH.token;
   $('#sRepo').value = GH.repo; $('#sRepo').disabled = on; $('#sToken').value = '';
@@ -815,7 +838,7 @@ function msgHTML(m) {
     ? `<div class="edit-box"><textarea class="edit-ta" rows="3">${esc(m.text)}</textarea><div class="edit-acts"><span class="muted-s">Enter = save · Esc = cancel</span><button type="button" data-act="editCancel">Cancel 取消</button><button type="button" class="primary" data-act="editSave">Save 保存</button></div></div>`
     : `<div class="orig">${marksHTML(m)}</div>${notesList(m)}`;
   return `<div class="msg ${m.speaker}${isRight(m.speaker) ? ' right' : ''}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
-  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${m.lang === 'zh' ? '中文' : 'EN'}</span>${edited}</div>
+  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${m.lang === 'zh' ? '中文' : 'EN'}</span>${viaTag(m)}${edited}</div>
   ${body}${tr}${fix}${note}
   <div class="acts">
     <button class="icon" data-act="edit" title="Edit / fix typos 修改（改错字）">✏️ Edit</button>
@@ -824,6 +847,7 @@ function msgHTML(m) {
     <button class="icon" data-act="star" title="Save to vocab (select words first) 收藏生词（可先选中词语）">⭐</button>
     ${/[A-Za-z]{2}/.test(m.text) ? `<button class="icon" data-act="grammar" title="Check spelling & grammar 检查拼写和语法">✍️ Grammar 语法</button>` : ''}
     ${m.lang === 'en' ? `<button class="icon" data-act="fix" title="Suggest more natural English 给出更地道的说法">✎ Better English</button>` : ''}
+    <button class="icon" data-act="swap" title="Sent as the wrong person? Move it to the other person · 身份发错了？改成对方发的">⇄ ${esc(nameOf(m.speaker === 'A' ? 'B' : 'A'))}</button>
     <button class="icon" data-act="note" title="Add a note 加备注">💬</button>
     <button class="icon" data-act="copy" title="Copy">📋</button>
     <button class="icon" data-act="del" title="Delete">🗑</button>
@@ -832,11 +856,16 @@ function msgHTML(m) {
 function renderComposer() {
   if (ME) S.speaker = ME;
   const sp = S.speaker;
-  $('#who').innerHTML = '<div class="seg" role="group" aria-label="Who is speaking">' + (ME ? [ME] : ['A', 'B']).map(k => `<button type="button" class="${k} ${sp === k ? 'on' : ''}" data-sp="${k}" aria-pressed="${sp === k}"><img class="face" src="img/face-${k === 'A' ? 'a' : 'b'}.png" alt="">${esc(nameOf(k))}<span class="tag">${k === 'A' ? '中/EN' : 'EN'}</span></button>`).join('') + '</div>' +
-    (ME ? `<span class="hint">🔒 This device is for <b>${esc(nameOf(sp))}</b> · 这台设备已固定（⚙️ 设置里可改）</span>`
-    : `<span class="hint">Speaking now: <b>${esc(nameOf(sp))}</b> · Alt+S to switch 切换</span>`);
+  const roleMenu = `<div class="eng-menu role-menu" id="roleMenu" role="menu"><div class="eng-head">Who uses this device 这台设备是谁在用</div>` + [['A', 'Chinese speaker · 中文母语者'], ['B', 'English speaker · 英语母语者'], ['', 'Both of us, one device · 两人共用（可切换）']].map(([k, d]) =>
+    `<button type="button" class="eng-item ${ME === k ? 'on' : ''}" data-role="${k}"><span class="eng-ic">${k ? `<img class="face" src="img/face-${k === 'A' ? 'a' : 'b'}.png" alt="" style="width:22px;height:22px;border-radius:50%">` : '👥'}</span><span><b>${k ? esc(nameOf(k)) : 'Shared'}</b>${ME === k ? ' <span class="eng-cur">✓</span>' : ''}<small>${d}</small></span></button>`).join('') + '</div>';
+  if (ME) { $('#who').innerHTML = `<button type="button" class="role-btn ${ME}" id="roleBtn" aria-haspopup="menu" title="Change who uses this device · 切换身份"><img src="img/face-${ME === 'A' ? 'a' : 'b'}.png" alt="">🔒 ${esc(nameOf(ME))} ▾</button>` + roleMenu
+      + `<span class="hint">You are <b>${esc(nameOf(ME))}</b> on this device · 这台设备是 ${esc(nameOf(ME))}</span>`; }
+  else $('#who').innerHTML = '<div class="seg" role="group" aria-label="Who is speaking">' + ['A', 'B'].map(k => `<button type="button" class="${k} ${sp === k ? 'on' : ''}" data-sp="${k}" aria-pressed="${sp === k}"><img class="face" src="img/face-${k === 'A' ? 'a' : 'b'}.png" alt="">${esc(nameOf(k))}<span class="tag">${k === 'A' ? '中/EN' : 'EN'}</span></button>`).join('') + '</div>' +
+    `<button type="button" class="role-more" id="roleBtn" aria-haspopup="menu" title="Lock this device to one person · 固定身份">🔒▾</button>` + roleMenu
+    + `<span class="hint">Speaking now: <b>${esc(nameOf(sp))}</b> · Alt+S to switch 切换</span>`;
   $('#phrases').innerHTML = PHRASES[sp].map(([en, zh]) => `<button data-ph="${esc(en)}">${esc(en)}<small>${esc(zh)}</small></button>`).join('');
   $('#composer').classList.toggle('speakB', sp === 'B');
+  $('#sendBtn').textContent = 'Send · ' + nameOf(sp); $('#sendBtn').className = 'primary as-' + sp;
   $('#helpBtn').style.display = $('#checkBtn').style.display = sp === 'A' ? '' : 'none';
   $('#zhBtn').style.display = sp === 'B' ? '' : 'none';
   setMicLang(sp === 'B' ? 'en-US' : (S.micLangA || 'en-US'));
@@ -845,18 +874,28 @@ function renderComposer() {
 function rerenderMsg(m) { const el = document.querySelector(`.msg[data-id="${m.id}"]`); if (el) el.outerHTML = msgHTML(m); else renderTimeline(); }
 
 // ---------- actions ----------
+// translations prepared while the message is still being typed, so it shows at once after Send
+const trReady = new Map(); let trTimer = 0;
+function prepTranslation() {
+  clearTimeout(trTimer); const t = $('#draft').value.trim();
+  if (t.length < 2 || S.settings.engine === 'off') return;
+  trTimer = setTimeout(async () => { const from = isZh(t) ? 'zh' : 'en', k = from + '|' + t; if (trReady.has(k)) return;
+    const out = await translate(t, from, from === 'zh' ? 'en' : 'zh'); if (out) { trReady.set(k, out); if (trReady.size > 30) trReady.delete(trReady.keys().next().value); } }, 600);
+}
 async function translateMsg(m) {
+  const ready = trReady.get(m.lang + '|' + m.text);
+  if (ready && S.settings.engine !== 'off') { m.tr = ready; save(); rerenderMsg(m); renderHeader(); return; }
   m.tr = undefined; rerenderMsg(m);
   const out = await translate(m.text, m.lang, m.lang === 'zh' ? 'en' : 'zh');
   m.tr = S.settings.engine === 'off' ? '' : out; save(); rerenderMsg(m); renderHeader();
 }
 function send() {
   const text = $('#draft').value.trim(); if (!text) return;
-  const m = { id: uid(), ts: Date.now(), speaker: S.speaker, text, lang: isZh(text) ? 'zh' : 'en' };
+  const m = { id: uid(), ts: Date.now(), speaker: S.speaker, text, lang: isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME } };
   conv().messages.push(m);
   $('#draft').value = ''; autoGrow(); closePreview();
   if (S.settings.autoSwitch && !ME) S.speaker = S.speaker === 'A' ? 'B' : 'A';
-  save(); query = ''; $('#search').value = ''; renderTimeline(); renderComposer(); renderSide(); renderHeader();
+  save(); ghSoon(300); query = ''; $('#search').value = ''; renderTimeline(); renderComposer(); renderSide(); renderHeader();
   translateMsg(m); $('#draft').focus();
   if (m.speaker === 'A' && S.settings.autoGrammar && /[A-Za-z]{2}/.test(m.text) && m.lang === 'en') checkMessage(m, true);
 }
@@ -888,10 +927,21 @@ let previewEn = null, previewLang = 'en';
 function showPreview(txt, en, lang) { previewEn = en; previewLang = lang || 'en'; $('#previewFlag').textContent = previewLang === 'zh' ? '🇨🇳' : '🇬🇧'; $('#previewTxt').textContent = txt; $('#previewUse').style.display = en ? '' : 'none'; $('#previewSpeak').style.display = en ? '' : 'none'; $('#preview').classList.add('show'); }
 function closePreview() { $('#preview').classList.remove('show'); previewEn = null; }
 
+function viaTag(m) {
+  if (!m.via) return '';
+  const u = usualOf(m.via.d), odd = u && u !== m.speaker && !m.roleOk;
+  return `<span class="via" title="Sent from ${esc(m.via.n)}${m.via.d === DEV ? ' (this device 本机)' : ''}">${devIcon(m.via.n)} ${esc(m.via.n)}</span>`
+    + (odd ? `<span class="warn" title="This device is usually used by ${esc(nameOf(u))}. Wrong person? Use ⇄ below. 这台设备平时是 ${esc(nameOf(u))} 在用，身份可能发错了，可以点下面的 ⇄ 改。">⚠ ${esc(nameOf(u))}'s device?</span>` : '');
+}
 async function onMsgAction(act, m, el) {
   const enText = m.lang === 'en' ? m.text : m.tr;
   const zhText = m.lang === 'zh' ? m.text : m.tr;
   switch (act) {
+    case 'swap': {
+      const to = m.speaker === 'A' ? 'B' : 'A';
+      if (!confirm(`Move this message to ${nameOf(to)}? (It was sent as ${nameOf(m.speaker)}.)\n把这条消息改成 ${nameOf(to)} 发的？`)) break;
+      m.speaker = to; m.roleOk = true; m.edited = Date.now(); save(); renderTimeline(); toast('Moved to ' + nameOf(to) + ' 已改成 ' + nameOf(to)); break;
+    }
     case 'edit': editingId = m.id; rerenderMsg(m); { const ta = document.querySelector(`.msg[data-id="${m.id}"] .edit-ta`); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.style.height = ta.scrollHeight + 4 + 'px'; } break;
     case 'editCancel': editingId = null; rerenderMsg(m); break;
     case 'editSave': {
@@ -998,10 +1048,17 @@ $('#engineBtn').onclick = e => { e.stopPropagation(); engMenuOpen(!$('#engineMen
 $('#engineMenu').onclick = e => { const b = e.target.closest('[data-eng]'); if (!b) return; e.stopPropagation();
   if (WEB && b.dataset.eng !== 'lt') { toast('Desktop version only — download it from GitHub · 只能在电脑版使用'); return; }
   S.settings.gEngine = b.dataset.eng; save(); renderCheckBtn(); engMenuOpen(false); toast('Checker 批改引擎: ' + ENGINES.find(x => x.id === b.dataset.eng).name); };
-document.addEventListener('click', () => engMenuOpen(false));
+document.addEventListener('click', () => { engMenuOpen(false); $('#roleMenu')?.classList.remove('show'); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') engMenuOpen(false); });
 $('#previewClose').onclick = closePreview;
-$('#who').onclick = e => { const b = e.target.closest('[data-sp]'); if (b) { S.speaker = b.dataset.sp; save(); renderComposer(); $('#draft').focus(); } };
+$('#who').onclick = e => {
+  if (e.target.closest('#roleBtn')) { e.stopPropagation(); $('#roleMenu').classList.toggle('show'); return; }
+  const r = e.target.closest('[data-role]');
+  if (r) { e.stopPropagation(); const k = r.dataset.role; $('#roleMenu').classList.remove('show'); if (k === ME) return;
+    const msg = k ? `From now on, messages from this device are sent as ${nameOf(k)}.\n以后这台设备发的消息都算 ${nameOf(k)} 的。确定吗？`
+                  : 'Both of you share this device: you will choose who is speaking each time.\n两人共用这台设备：每次发消息前要自己选是谁在说。确定吗？';
+    if (confirm(msg)) { setMe(k); toast(k ? 'You are ' + nameOf(k) + ' 现在是 ' + nameOf(k) : 'Shared device 两人共用'); } return; }
+  const b = e.target.closest('[data-sp]'); if (b) { S.speaker = b.dataset.sp; save(); renderComposer(); $('#draft').focus(); } };
 $('#phrases').onclick = e => { const b = e.target.closest('[data-ph]'); if (!b) return; const t = $('#draft'); t.value = (t.value ? t.value + ' ' : '') + b.dataset.ph; autoGrow(); t.focus(); const i = t.value.indexOf('___'); if (i >= 0) t.setSelectionRange(i, i + 3); };
 $('#timeline').onclick = e => {
   const msgEl = e.target.closest('.msg'); if (!msgEl) return; const m = conv().messages.find(x => x.id === msgEl.dataset.id); if (!m) return;
@@ -1110,7 +1167,8 @@ $('#syncConnect').onclick = async () => {
     lsSet('bb-gh-repo', repo); lsSet('bb-gh-token', token); GH.msg = ''; renderSyncBox(); ghSync();
   } catch (e) { GH.token = ''; syncMsg(ghErr(e)); }
 };
-$('#syncNow').onclick = () => ghSync();
+$('#syncNow').onclick = () => { GH.etag = ''; ghSync(); };
+$('#draft').addEventListener('input', prepTranslation);
 $('#syncForget').onclick = () => {
   if (!confirm('Forget the GitHub key on this device? Chats are not deleted.\n在这个浏览器里删掉钥匙？聊天记录不会被删除。')) return;
   GH.token = ''; GH.msg = ''; lsSet('bb-gh-token', ''); renderSyncBox(); if (WEB) setSaveState('Saved in this browser 存在本浏览器');
