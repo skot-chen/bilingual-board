@@ -181,7 +181,7 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 @media (max-width:700px){.title-refresh .tr-long{display:none}.title-refresh .tr-short{display:inline}.title-refresh{padding:4px 8px}}
 #meDlg .me-btns{display:flex;flex-direction:column;gap:8px;margin:12px 0}#meDlg .me-btns button{text-align:left;padding:10px 12px}#meDlg .me-btns small{display:block;opacity:.75}
 .lang-btn{font-size:.8em;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
-.sync-btns{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}#syncHow{margin:4px 0 8px}#syncHow small{line-height:1.7}
+.sync-lock{display:flex;gap:6px}.sync-lock input{flex:1;min-width:0}#syncPwMsg{font-weight:600}.sync-btns{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}#syncHow{margin:4px 0 8px}#syncHow small{line-height:1.7}
 .phrases{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px}
 .phrases button{flex:none;font-size:.8em;text-align:left;line-height:1.25}
 .phrases button small{display:block;color:var(--muted)}
@@ -363,9 +363,14 @@ header .search{flex-shrink:6;min-width:90px}
   <div class="field"><label for="sScale">Text size 字号</label><input type="range" id="sScale" min="0.85" max="1.6" step="0.05"></div>
   <fieldset class="ai-box" id="syncBox"><legend>☁ Sync 同步 · GitHub</legend>
     <div class="field"><small>Save the chats to your own <b>private</b> GitHub repository, so every device shows the same chats.<br>把聊天记录存到你自己的<b>私有</b> GitHub 仓库，手机、电脑打开都能看到同样的聊天。</small></div>
+    <div class="field" id="syncLock"><label for="sSyncPw">🔒 Password 密码</label>
+      <span class="sync-lock"><input type="password" id="sSyncPw" autocomplete="off"><button type="button" id="syncUnlock">Unlock 解锁</button></span></div>
+    <div class="field" id="syncLockHint"><small>Sync settings are locked. 同步设置已上锁，输入密码才能修改。 <span id="syncPwMsg" aria-live="polite"></span></small></div>
+    <div id="syncInner">
     <div class="field"><label for="sRepo">Repository 仓库<br><small>owner/name，必须是私有仓库</small></label><input type="text" id="sRepo" placeholder="you/bilingual-board-data" autocomplete="off" spellcheck="false"></div>
     <div class="field" id="syncKeyRow"><label for="sToken">GitHub key 钥匙<br><small>只存在这个浏览器里，不会上传</small></label><input type="password" id="sToken" autocomplete="off" placeholder="github_pat_…"></div>
-    <div class="sync-btns"><button type="button" id="syncConnect">🔗 Connect 连接</button><button type="button" id="syncNow">🔄 Sync now 现在同步</button><button type="button" id="syncForget">🔑 Forget key 删掉钥匙</button></div>
+    <div class="sync-btns"><button type="button" id="syncConnect">🔗 Connect 连接</button><button type="button" id="syncNow">🔄 Sync now 现在同步</button><button type="button" id="syncForget">🔑 Forget key 删掉钥匙</button><button type="button" id="syncRelock">🔒 Lock 锁上</button></div>
+    </div>
     <div class="field"><small id="syncMsg" aria-live="polite"></small></div>
     <details id="syncHow"><summary><small>How to get a key 怎么拿钥匙（每台设备做一次）</small></summary><small>
       ① Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → new fine-grained token 新建钥匙</a><br>
@@ -736,7 +741,23 @@ function ghSoon(ms = 1500) { if (!GH.token) return; GH.dirty = true; clearTimeou
 // pick up messages written on another device: right away when the page comes back, then every 4 s while it is open
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ghSync(true); });
 setInterval(() => { if (document.visibilityState === 'visible') ghSync(true); }, 4000);
+// A small lock on the sync settings, so nobody changes or removes the sync key by accident on a shared device.
+// Only a hash of the password is in this (public) code. Unlocking lasts until this browser tab is closed.
+const SYNC_PW_HASH = 'a1f3f3d030e0209799a2cd367dca486c8a362063fd0010bd8986351fb2f01b4a';
+const syncUnlocked = () => { try { return sessionStorage.getItem('bb-sync-ok') === SYNC_PW_HASH; } catch { return false; } };
+async function sha256hex(s) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+async function trySyncUnlock() {
+  const pw = $('#sSyncPw').value, msg = $('#syncPwMsg');
+  if (!pw) { msg.textContent = 'Type the password 请输入密码'; return; }
+  let h = ''; try { h = await sha256hex('bb-sync:' + pw); } catch { msg.textContent = '⚠ This browser can\'t check passwords here (needs https) 这个浏览器在这里无法验证密码（需要 https）'; return; }
+  if (h !== SYNC_PW_HASH) { msg.textContent = '✗ Wrong password 密码不对'; $('#sSyncPw').select(); return; }
+  try { sessionStorage.setItem('bb-sync-ok', h); } catch {}
+  $('#sSyncPw').value = ''; msg.textContent = ''; renderSyncBox();
+}
 function renderSyncBox() {
+  const ok = syncUnlocked();
+  $('#syncLock').hidden = ok; $('#syncLockHint').hidden = ok; $('#syncInner').hidden = !ok;
+  if (!ok) { $('#syncHow').hidden = true; syncMsg(GH.msg || (GH.token ? '✓ Connected 已连接 ' + GH.repo : 'Not connected 未连接')); return; }
   const on = !!GH.token;
   $('#sRepo').value = GH.repo; $('#sRepo').disabled = on; $('#sToken').value = '';
   $('#syncKeyRow').hidden = on; $('#syncConnect').hidden = on; $('#syncNow').hidden = !on; $('#syncForget').hidden = !on; $('#syncHow').hidden = on;
@@ -1903,6 +1924,7 @@ $('#settingsDlg').addEventListener('input', () => {
   s.autoSwitch = $('#sSwitch').checked; s.autoGrammar = $('#sGrammar').checked; if (!WEB) s.gEngine = $('#sGEngine').value; s.aiModel = $('#sModel').value; s.engine = $('#sEngine').value; s.rate = +$('#sRate').value; s.scale = +$('#sScale').value; save(); renderAll();
 });
 $('#syncConnect').onclick = async () => {
+  if (!syncUnlocked()) return renderSyncBox();
   const repo = $('#sRepo').value.trim().replace(/^https:\/\/github\.com\//, '').replace(/\.git$|\/$/g, ''), token = $('#sToken').value.trim();
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return syncMsg('✗ Repository looks like owner/name · 仓库格式是 用户名/仓库名');
   if (!token) return syncMsg('✗ Paste the key first · 先粘贴钥匙');
@@ -1915,6 +1937,9 @@ $('#syncConnect').onclick = async () => {
     lsSet('bb-gh-repo', repo); lsSet('bb-gh-token', token); GH.msg = ''; renderSyncBox(); ghSync();
   } catch (e) { GH.token = ''; syncMsg(ghErr(e)); }
 };
+$('#syncUnlock').onclick = trySyncUnlock;
+$('#sSyncPw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); trySyncUnlock(); } });
+$('#syncRelock').onclick = () => { try { sessionStorage.removeItem('bb-sync-ok'); } catch {} renderSyncBox(); };
 $('#syncNow').onclick = () => { GH.etag = ''; ghSync(); };
 $('#draft').addEventListener('input', prepTranslation);
 const TYPING_TTL = 12000;
@@ -1950,6 +1975,7 @@ function renderTyping() {
 setInterval(() => { if (document.visibilityState === 'visible') checkTyping(); }, 4000);
 setInterval(renderTyping, 1000);
 $('#syncForget').onclick = () => {
+  if (!syncUnlocked()) return renderSyncBox();
   if (!confirm('Forget the GitHub key on this device? Chats are not deleted.\n在这个浏览器里删掉钥匙？聊天记录不会被删除。')) return;
   GH.token = ''; GH.msg = ''; lsSet('bb-gh-token', ''); renderSyncBox(); if (WEB) setSaveState('Saved in this browser 存在本浏览器');
 };
