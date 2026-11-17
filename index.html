@@ -38,6 +38,13 @@ aside{border-right:1px solid var(--line);background:var(--panel);display:flex;fl
 .conv .cat-ic{font-size:1.15em;line-height:1;padding:4px;border-radius:8px;align-self:flex-start;cursor:pointer;background:none;border:0}
 .conv .cat-ic:hover{background:var(--line)}
 .conv-main{display:flex;gap:6px;min-width:0;flex:1}
+.conv .pin{opacity:.25;font-size:.9em}.conv:hover .pin,.conv .pin.on{opacity:1}
+@media (hover:none){.conv .pin{opacity:.5}}
+.conv.pinned{background:linear-gradient(90deg,var(--a-soft),transparent 70%)}
+.pin-sep{font-size:.7em;color:var(--muted);padding:6px 10px 2px;text-transform:uppercase;letter-spacing:.05em}
+.conv.dragging{opacity:.85;box-shadow:0 6px 18px rgba(0,0,0,.35);position:relative;z-index:5;cursor:grabbing;background:var(--panel)}
+.conv.drop-before{box-shadow:inset 0 3px 0 var(--a)}#sideList.drop-end .conv:last-child{box-shadow:inset 0 -3px 0 var(--a)}
+#sideList.dragmode{user-select:none}
 .cfilter{display:flex;gap:4px;flex-wrap:wrap;padding:6px 8px;border-bottom:1px solid var(--line)}
 .cfilter button{font-size:.75em;padding:2px 8px;border-radius:999px}.cfilter button.on{background:var(--ink);color:var(--bg)}
 #convDlg .cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin:8px 0}
@@ -521,6 +528,51 @@ $('#cSave').onclick = () => { const c = S.conversations.find(c => c.id === convE
 $('#cAuto').onclick = () => { const c = S.conversations.find(c => c.id === convEditId); if (!c) return;
   delete c.cat; delete c.titleZh; delete c.titleBy; if (c.titleSet) { c.titleSet = false; c.title = 'Chat ' + new Date(c.created || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + new Date(c.created || Date.now()).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
   c.metaUpd = Date.now(); save(); $('#convDlg').close(); renderSide(); renderHeader(); };
+// ---------- 📌 pinned chats (c.pin = 1, 2, 3… their order) and drag to reorder ----------
+const isPinned = c => typeof c.pin === 'number';
+const lastAct = c => c.messages.at(-1)?.ts || c.created || 0;
+const sortedConvs = () => [...S.conversations].sort((a, b) => (isPinned(b) - isPinned(a)) || (isPinned(a) ? a.pin - b.pin : lastAct(b) - lastAct(a)));
+function setPins(ids) { // ids = the pinned chats in their new order; everything else unpinned
+  for (const c of S.conversations) { const i = ids.indexOf(c.id); const want = i < 0 ? undefined : i + 1;
+    if (c.pin !== want) { if (want === undefined) delete c.pin; else c.pin = want; c.metaUpd = Date.now(); } }
+  save(); renderSide();
+}
+const pinnedIds = () => sortedConvs().filter(isPinned).map(c => c.id);
+function togglePin(id) { const ids = pinnedIds(); const c = S.conversations.find(c => c.id === id); if (!c) return;
+  if (isPinned(c)) { setPins(ids.filter(x => x !== id)); toast('Unpinned 已取消置顶'); } else { setPins([id, ...ids]); toast('📌 Pinned to the top 已置顶'); } }
+// drag: mouse = press and move; touch = hold ~0.4 s, then move
+let convDrag = null, dragJustEnded = false;
+$('#sideList').addEventListener('pointerdown', e => {
+  const el = e.target.closest('.conv'); if (!el || e.target.closest('button') || e.button > 0) return;
+  convDrag = { id: el.dataset.id, el, x: e.clientX, y: e.clientY, pid: e.pointerId, touch: e.pointerType !== 'mouse', on: false, before: null };
+  if (convDrag.touch) convDrag.timer = setTimeout(() => convDrag && startDrag(), 400);
+});
+function startDrag() { convDrag.on = true; convDrag.el.classList.add('dragging'); $('#sideList').classList.add('dragmode'); try { convDrag.el.setPointerCapture(convDrag.pid); } catch {} navigator.vibrate?.(15); }
+$('#sideList').addEventListener('pointermove', e => {
+  if (!convDrag) return; const dx = e.clientX - convDrag.x, dy = e.clientY - convDrag.y, far = Math.hypot(dx, dy);
+  if (!convDrag.on) { if (convDrag.touch) { if (far > 10) { clearTimeout(convDrag.timer); convDrag = null; } return; } if (far < 6) return; startDrag(); }
+  e.preventDefault(); convDrag.el.style.transform = `translateY(${dy}px)`;
+  const items = [...document.querySelectorAll('#sideList .conv')].filter(x => x !== convDrag.el);
+  items.forEach(x => x.classList.remove('drop-before')); $('#sideList').classList.remove('drop-end');
+  const t = items.find(x => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+  convDrag.before = t ? t.dataset.id : null; if (t) t.classList.add('drop-before'); else $('#sideList').classList.add('drop-end');
+  const L = $('#sideList'), r = L.getBoundingClientRect(); if (e.clientY < r.top + 30) L.scrollTop -= 8; else if (e.clientY > r.bottom - 30) L.scrollTop += 8; // scroll while dragging
+}, { passive: false });
+$('#sideList').addEventListener('touchmove', e => { if (convDrag && convDrag.on) e.preventDefault(); }, { passive: false });
+function endDrag(cancel) {
+  if (!convDrag) return; clearTimeout(convDrag.timer); const d = convDrag; convDrag = null;
+  if (!d.on) return; dragJustEnded = true; setTimeout(() => dragJustEnded = false, 50);
+  document.querySelectorAll('#sideList .drop-before').forEach(x => x.classList.remove('drop-before')); $('#sideList').classList.remove('drop-end', 'dragmode');
+  d.el.classList.remove('dragging'); d.el.style.transform = '';
+  if (cancel) return;
+  const ids = pinnedIds().filter(x => x !== d.id), before = d.before && S.conversations.find(c => c.id === d.before);
+  const firstUnpinned = sortedConvs().filter(c => c.id !== d.id).find(c => !isPinned(c));
+  if (before && isPinned(before)) { ids.splice(ids.indexOf(before.id), 0, d.id); setPins(ids); toast('📌 Order saved 已调整顺序'); }
+  else if (before && (before === firstUnpinned)) { setPins([...ids, d.id]); toast('📌 Pinned 已置顶'); }
+  else { const was = pinnedIds().includes(d.id); setPins(ids); toast(was ? 'Unpinned — recent chats sort by time 已取消置顶（最近的对话按时间排序）' : 'Only pinned chats can be moved — drop it at the top 只有置顶的对话能调顺序，拖到最上面'); }
+}
+$('#sideList').addEventListener('pointerup', () => endDrag(false));
+$('#sideList').addEventListener('pointercancel', () => endDrag(true));
 function newConv(title) { const d = new Date(); return { id: uid(), title: title || 'Chat ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), created: Date.now(), messages: [] }; }
 // Web version (GitHub Pages, or ?web): no local server — chats stay in this browser, only the online LanguageTool checker works.
 const WEB = /.github.io$/.test(location.hostname) || new URLSearchParams(location.search).has('web');
@@ -948,16 +1000,18 @@ function renderSide() {
   $('#tabChats').classList.toggle('on', sideTab === 'chats'); $('#tabVocab').classList.toggle('on', sideTab === 'vocab');
   const L = $('#sideList'), F = $('#sideFoot');
   if (sideTab === 'chats') {
-    const all = [...S.conversations].sort((a, b) => (b.messages.at(-1)?.ts || b.created) - (a.messages.at(-1)?.ts || a.created));
+    const all = sortedConvs();
     const counts = {}; for (const c of all) { const k = convCat(c); counts[k] = (counts[k] || 0) + 1; }
     if (catFilter !== 'all' && !counts[catFilter]) catFilter = 'all';
     const chips = all.length > 1 ? `<div class="cfilter"><button type="button" data-cf="all" class="${catFilter === 'all' ? 'on' : ''}">All 全部 ${all.length}</button>`
       + CATS.filter(k => counts[k.id]).map(k => `<button type="button" data-cf="${k.id}" class="${catFilter === k.id ? 'on' : ''}" title="${k.zh}">${k.ic} ${k.en} ${counts[k.id]}</button>`).join('') + '</div>' : '';
-    L.innerHTML = chips + all.filter(c => catFilter === 'all' || convCat(c) === catFilter).map(c => { const t = convTitle(c), k = catById(convCat(c));
-      return `<div class="conv ${c.id === S.activeId ? 'on' : ''}" data-id="${c.id}"><div class="conv-main"><button type="button" class="cat-ic" data-cedit="${c.id}" title="${k.en} ${k.zh} — change title or category 改标题或分类">${k.ic}</button>
+    const shown = all.filter(c => catFilter === 'all' || convCat(c) === catFilter), nPin = shown.filter(isPinned).length;
+    L.innerHTML = chips + shown.map((c, i) => { const t = convTitle(c), k = catById(convCat(c));
+      return (i === 0 && nPin ? '<div class="pin-sep">📌 Pinned 置顶 · drag to reorder 可拖动排序</div>' : '') + (i === nPin && nPin ? '<div class="pin-sep">Recent 最近</div>' : '')
+       + `<div class="conv ${c.id === S.activeId ? 'on' : ''} ${isPinned(c) ? 'pinned' : ''}" data-id="${c.id}"><div class="conv-main"><button type="button" class="cat-ic" data-cedit="${c.id}" title="${k.en} ${k.zh} — change title or category 改标题或分类">${k.ic}</button>
        <div style="min-width:0"><div class="t">${esc(t.en)}</div>${t.zh ? `<div class="tz">${esc(t.zh)}</div>` : ''}
        <div class="d">${c.messages.length} msgs · ${dayLabel(c.messages.at(-1)?.ts || c.created)}</div></div></div>
-       <button class="icon" data-del="${c.id}" title="Delete chat">🗑</button></div>`; }).join('');
+       <button class="icon pin ${isPinned(c) ? 'on' : ''}" data-pin="${c.id}" title="${isPinned(c) ? 'Unpin 取消置顶' : 'Pin to the top 置顶'}">📌</button><button class="icon" data-del="${c.id}" title="Delete chat">🗑</button></div>`; }).join('');
     F.innerHTML = `<button id="newConv" class="primary" style="flex:1">+ New chat 新对话</button>`;
     $('#newConv').onclick = () => { const c = newConv(); S.conversations.push(c); S.activeId = c.id; save(); renderAll(); $('#draft').focus(); };
   } else {
@@ -1554,6 +1608,8 @@ tool.onclick = async e => {
 $('#tabChats').onclick = () => { sideTab = 'chats'; renderSide(); };
 $('#tabVocab').onclick = () => { sideTab = 'vocab'; renderSide(); };
 $('#sideList').onclick = e => {
+  if (dragJustEnded) return;
+  const pn = e.target.closest('[data-pin]'); if (pn) { e.stopPropagation(); togglePin(pn.dataset.pin); return; }
   const ce = e.target.closest('[data-cedit]'); if (ce) { e.stopPropagation(); openConvDlg(ce.dataset.cedit); return; }
   const cf = e.target.closest('[data-cf]'); if (cf) { catFilter = cf.dataset.cf; renderSide(); return; }
   const del = e.target.closest('[data-del]'), vdel = e.target.closest('[data-vdel]'), say = e.target.closest('[data-say]'), cv = e.target.closest('.conv');
