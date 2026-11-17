@@ -6,6 +6,12 @@
 <title>Bilingual Board · 双语聊天板</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f766e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Board 聊天板">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
 :root{
   --bg:#f6f3ee; --panel:#fffdf9; --ink:#1f2328; --muted:#6b6f76; --line:#e6e0d6;
@@ -181,6 +187,7 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 @media (max-width:700px){.title-refresh .tr-long{display:none}.title-refresh .tr-short{display:inline}.title-refresh{padding:4px 8px}}
 #meDlg .me-btns{display:flex;flex-direction:column;gap:8px;margin:12px 0}#meDlg .me-btns button{text-align:left;padding:10px 12px}#meDlg .me-btns small{display:block;opacity:.75}
 .lang-btn{font-size:.8em;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
+#newVer{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;display:flex;gap:8px;align-items:center;background:#d97706;color:#fff;padding:8px 12px;border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:.92em;width:max-content;max-width:calc(100% - 24px);white-space:nowrap}#newVer[hidden]{display:none}#newVer button{border:0;border-radius:8px;padding:5px 10px;font:inherit;cursor:pointer}#newVerGo{background:#fff;color:#92400e;font-weight:700}#newVerLater{background:transparent;color:#fff}
 .sync-lock{display:flex;gap:6px}.sync-lock input{flex:1;min-width:0}#syncPwMsg{font-weight:600}.sync-btns{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}#syncHow{margin:4px 0 8px}#syncHow small{line-height:1.7}
 .phrases{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px}
 .phrases button{flex:none;font-size:.8em;text-align:left;line-height:1.25}
@@ -279,6 +286,7 @@ header .search{flex-shrink:6;min-width:90px}
 <script src="vendor/tz-countries.js"></script><!-- pinyin for Chinese text (MIT, pinyin-pro 3.29.5) -->
 </head>
 <body>
+<div id="newVer" role="status" hidden>🆕 New version 有新版本 <button type="button" id="newVerGo">Update 更新</button><button type="button" id="newVerLater" aria-label="Later 稍后">✕</button></div>
 <div class="app">
   <aside id="side">
     <div class="brand"><div>Bilingual Board<small>双语聊天板 · learn while you talk</small></div><div class="brand-cats" aria-hidden="true"><img src="img/fawn-step.png" alt=""><img src="img/lilac-step.png" alt=""></div></div>
@@ -1980,6 +1988,20 @@ $('#syncForget').onclick = () => {
   GH.token = ''; GH.msg = ''; lsSet('bb-gh-token', ''); renderSyncBox(); if (WEB) setSaveState('Saved in this browser 存在本浏览器');
 };
 if (GH.token) setTimeout(ghSync, 500);
+
+// New version check: an app on the phone's home screen has no reload button, so when the web page is updated
+// (the server's Last-Modified changes) a small bar offers to reload. The desktop server sends no date, so it is skipped.
+const PAGE_DATE = Date.parse(document.lastModified) || 0; let verChecked = 0;
+async function checkNewVersion(force) {
+  if (!PAGE_DATE || (!force && Date.now() - verChecked < 5 * 60e3)) return; verChecked = Date.now();
+  try { const r = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' }); const lm = Date.parse(r.headers.get('last-modified') || '');
+    if (r.ok && lm && lm - PAGE_DATE > 2000) $('#newVer').hidden = false; } catch {}
+}
+$('#newVerGo').onclick = () => location.reload();
+$('#newVerLater').onclick = () => { $('#newVer').hidden = true; };
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNewVersion(); });
+setInterval(() => { if (document.visibilityState === 'visible') checkNewVersion(true); }, 30 * 60e3);
+setTimeout(() => checkNewVersion(true), 8000);
 function fillMeMenu() {
   const n = k => esc(nameOf(k));
   $('#sMe').innerHTML = `<option value="">Shared computer — both people · 两人共用一台（可切换说话人）</option>

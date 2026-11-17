@@ -15,6 +15,11 @@ Works on **Windows** and **macOS**. No accounts and no cloud needed. Chats stay 
 - Chinese speaker 中文母语者: https://skot-chen.github.io/bilingual-board/?me=zh
 - English speaker: https://skot-chen.github.io/bilingual-board/?me=en&lang=en
 
+**As an app on your phone · 装到手机主屏幕:** the web page still works in the browser as before; you can also add it to the home screen, where it opens full screen like an app.
+- iPhone: open the link in **Safari** → Share → **Add to Home Screen**. 用 Safari 打开 → 分享 → 添加到主屏幕。The app keeps its own storage, so choose who you are and connect ☁ Sync once more inside the app. 主屏幕 App 的数据和 Safari 分开，要在 App 里重新选身份、连一次同步。
+- Android: open the link in **Chrome** → menu ⋮ → **Install app** (or **Add to Home screen**). 用 Chrome 打开 → ⋮ → 安装应用。
+- Updates come by themselves. When a new version is online, an orange bar "🆕 New version 有新版本" appears; tap **Update 更新**. 有新版本时会出现橙色提示条，点「更新」即可。
+
 To change it, tap the 🔒 name button above the message box (it asks before switching), or use ⚙️ Settings → *Who uses this device*. On one shared computer, choose *Shared* to switch speakers as before.
 Each message shows the device it came from (📱 iPhone, 💻 Windows…). If a device sends as the person who doesn't usually use it, the message gets a ⚠, and **⇄** moves it to the right person.
 
