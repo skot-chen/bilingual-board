@@ -67,7 +67,7 @@ Every correction shows which checker made it. · 每条批改都会标明是哪�
 - Automatic translation. In learning mode, the Chinese is blurred until you click it.
 - **中→EN** turns a Chinese draft into English. **EN→中** (for the English speaker) gives natural Chinese with pinyin and a tip.
 - Red-pen corrections that read the scene: a "This moment" version, plus an "only fix mistakes" version.
-- ⭐ Vocabulary list with flashcards and CSV export. 🔊 Read aloud. 🎤 Voice input (Chrome and Edge).
+- ⭐ Vocabulary: each saved word gets a word card (phonetics, part of speech, English definitions and examples from the free dictionaryapi.dev, Chinese meaning with pinyin, the chat sentence it came from, your note) and a colour for how well you know it (New / Learning / Known). Practice shows the words you know least first, in both directions, and spaces the reviews (Forgot / Unsure / Got it). CSV export. 🔊 Read aloud. 🎤 Voice input (Chrome and Edge).
 - Message times for two places: in ⚙️ Settings each person can choose a country or region (and a time zone if it has more than one), plus an optional city. If nothing is chosen, the board uses this computer's time.
 - Search, several conversations, Markdown export, JSON backup and restore, dark mode.
 

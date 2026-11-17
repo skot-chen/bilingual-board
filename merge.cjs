@@ -28,7 +28,11 @@
       }
     }
     const vocab = new Map();
-    for (const src of [older, newer]) for (const v of src.vocab || []) if (!deleted.has(v.id)) vocab.set(v.id, v);
+    for (const src of [older, newer]) for (const v of src.vocab || []) {
+      if (deleted.has(v.id)) continue;
+      const prev = vocab.get(v.id); // keep whichever copy of the word was changed last (level, note, dictionary)
+      if (!prev || (v.upd || v.ts || 0) >= (prev.upd || prev.ts || 0)) vocab.set(v.id, v);
+    }
 
     const out = Object.assign({}, newer, {
       updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0),

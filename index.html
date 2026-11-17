@@ -35,8 +35,24 @@ aside{border-right:1px solid var(--line);background:var(--panel);display:flex;fl
 .conv .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .conv .d{color:var(--muted);font-size:.78em}
 .side-foot{padding:10px 12px;border-top:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap}
-.vocab{padding:8px 10px;border-bottom:1px solid var(--line)}
-.vocab .en{font-weight:600} .vocab .zh{color:var(--muted)}
+.vocab{padding:8px 10px 8px 12px;border-bottom:1px solid var(--line);border-left:4px solid var(--lv,#dc2626);cursor:pointer}
+.vocab:hover{background:var(--a-soft)}
+.vocab .en{font-weight:600;display:flex;align-items:center;gap:6px} .vocab .zh{color:var(--muted);font-size:.9em}
+.vocab .py,.wc .py{font-size:.8em;opacity:.75;margin-left:4px} .vocab .pos{font-size:.7em;font-weight:500;opacity:.7;border:1px solid var(--line);border-radius:6px;padding:0 4px}
+.lv0{--lv:#dc2626}.lv1{--lv:#d97706}.lv2{--lv:#16a34a}
+.vfilter{display:flex;gap:4px;flex-wrap:wrap;padding:6px 8px;border-bottom:1px solid var(--line)}
+.vfilter button{font-size:.75em;padding:2px 8px;border-radius:999px}.vfilter button.on{background:var(--ink);color:var(--bg)}
+.vfilter .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--lv);margin-right:4px}
+#wordDlg{width:min(560px,94vw);box-sizing:border-box}.wc{width:100%;overflow-wrap:anywhere}.wc-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.wc-en{font-size:1.8em;font-weight:700}
+.wc-ph{color:var(--muted);margin:2px 0 8px}.wc-zh{font-size:1.2em;margin:6px 0}
+.wc-lv{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}.wc-lv button{border-left:4px solid var(--lv)}.wc-lv button.on{background:var(--lv);color:#fff;border-color:var(--lv)}
+.wc h3{font-size:.8em;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 4px}
+.wc ol{margin:0;padding-left:20px}.wc li{margin:3px 0}.wc .ex{color:var(--muted);font-style:italic;display:block}
+.wc .src{border-left:3px solid var(--line);padding:4px 10px;margin:4px 0}.wc .src mark{background:#fde68a;color:#111;border-radius:3px}
+.wc textarea{width:100%;box-sizing:border-box}.wc .foot{color:var(--muted);font-size:.8em;margin-top:10px}
+.card .ex{font-size:.55em;color:var(--muted);margin-top:10px;font-style:italic}.card .py{font-size:.6em;opacity:.75}
+#grade{display:inline-flex;gap:6px;flex-wrap:wrap}.qprog{color:var(--muted);font-size:.85em;text-align:center}
+@keyframes flashmsg{0%,60%{box-shadow:0 0 0 3px #fde68a}100%{box-shadow:none}}.msg.flash .bubble{animation:flashmsg 2s}
 main{display:flex;flex-direction:column;min-height:0;min-width:0}
 header{display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
 header h1{font-size:1.05em;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:text}
@@ -287,8 +303,17 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
 
 <dialog id="quizDlg"><form method="dialog">
   <h2>Vocab practice · 生词练习</h2>
+  <div class="qprog" id="qprog"></div>
   <div class="card" id="card"></div>
-  <div class="dlg-acts"><button type="button" id="cardSpeak">🔊</button><button type="button" id="cardFlip">Show answer 看答案</button><button type="button" id="cardNext">Next 下一个</button><button value="close" class="primary">Close</button></div>
+  <div class="dlg-acts"><button type="button" id="cardSpeak">🔊</button><button type="button" id="cardFlip">Show answer 看答案</button>
+    <span id="grade" hidden><button type="button" data-g="0">😵 Forgot 忘了</button><button type="button" data-g="1">🤔 Unsure 模糊</button><button type="button" data-g="2">😀 Got it 记住了</button></span>
+    <button value="close" class="primary">Close</button></div>
+</form></dialog>
+
+<dialog id="wordDlg"><form method="dialog">
+  <div class="wc" id="wordCard"></div>
+  <div class="dlg-acts"><button type="button" id="wPrev" title="Previous word">‹</button><button type="button" id="wNext" title="Next word">›</button>
+    <button type="button" id="wDel">🗑 Delete 删除</button><button value="close" class="primary">Done</button></div>
 </form></dialog>
 
 <div class="mtool" id="mtool" role="toolbar" aria-label="Mark selected text"></div>
@@ -729,11 +754,11 @@ function renderSide() {
     F.innerHTML = `<button id="newConv" class="primary" style="flex:1">+ New chat 新对话</button>`;
     $('#newConv').onclick = () => { const c = newConv(); S.conversations.push(c); S.activeId = c.id; save(); renderAll(); $('#draft').focus(); };
   } else {
-    L.innerHTML = S.vocab.length ? [...S.vocab].reverse().map(v => `<div class="vocab"><div class="en">${esc(v.en)} <button class="icon" data-say="${v.id}">🔊</button><button class="icon" data-vdel="${v.id}">✕</button></div><div class="zh">${esc(v.zh || '')}</div></div>`).join('')
+    L.innerHTML = S.vocab.length ? vocabListHTML()
       : `<div class="empty" style="margin-top:20px"><img class="empty-cat" src="img/lilac-crouch.png" alt="" style="height:60px">No words yet.<br>Select text in a message and press ⭐<br>选中消息里的词，点 ⭐ 收藏</div>`;
-    F.innerHTML = `<button id="quizBtn" class="primary" style="flex:1" ${S.vocab.length ? '' : 'disabled'}>Practice 练习</button><button id="vocabCsv">Export</button>`;
+    F.innerHTML = `<button id="quizBtn" class="primary" style="flex:1" ${S.vocab.length ? '' : 'disabled'}>Practice 练习${dueWords().length ? ' · ' + dueWords().length : ''}</button><button id="vocabCsv">Export</button>`;
     $('#quizBtn').onclick = openQuiz;
-    $('#vocabCsv').onclick = () => download('vocab.csv', '﻿English,Chinese,Added\n' + S.vocab.map(v => [v.en, v.zh, new Date(v.ts).toISOString().slice(0, 10)].map(x => '"' + String(x || '').replace(/"/g, '""') + '"').join(',')).join('\n'), 'text/csv');
+    $('#vocabCsv').onclick = () => download('vocab.csv', '﻿English,Chinese,Pinyin,Level,Note,Added\n' + S.vocab.map(v => [v.en, v.zh, pyOf(v), LV[lvOf(v)].en, v.note || '', new Date(v.ts).toISOString().slice(0, 10)].map(x => '"' + String(x || '').replace(/"/g, '""') + '"').join(',')).join('\n'), 'text/csv');
   }
 }
 function renderTimeline() {
@@ -973,25 +998,106 @@ async function onMsgAction(act, m, el) {
       const sel = String(getSelection()).trim();
       let en, zh;
       if (sel && el.contains(getSelection().anchorNode)) {
-        if (isZh(sel)) { zh = sel; en = await translate(sel, 'zh', 'en'); } else { en = sel; zh = await translate(sel, 'en', 'zh'); }
+        if (isZh(sel)) { zh = sel; en = await translate(sel, 'zh', 'en'); } else { en = sel; zh = await translate(sel, 'en', 'zh'); if (zh && !isZh(zh)) zh = ''; }
       } else { en = enText; zh = zhText; }
       if (!en) return toast('Nothing to save');
       if (S.vocab.some(v => v.en.toLowerCase() === en.toLowerCase())) return toast('Already saved 已收藏');
-      S.vocab.push({ id: uid(), ts: Date.now(), en, zh: zh || '', from: m.id }); save(); toast('⭐ Saved: ' + en.slice(0, 40)); renderSide(); break; }
+      { const v = { id: uid(), ts: Date.now(), en, zh: zh || '', from: m.id, by: S.speaker, lvl: 0, box: 0, due: 0 }; S.vocab.push(v); save(); loadDict(v).then(renderSide); }
+      toast('⭐ Saved: ' + en.slice(0, 40)); renderSide(); break; }
   }
 }
 
-// ---------- quiz ----------
-let card = null, flipped = false;
-function openQuiz() { nextCard(); $('#quizDlg').showModal(); }
+// ---------- words: levels, dictionary, word card ----------
+// v = { id, ts, en, zh, from (message id), by (A/B), lvl 0 new / 1 learning / 2 known, box, due, reps, note, dict, upd }
+const LV = [{ en: 'New', zh: '新词' }, { en: 'Learning', zh: '学习中' }, { en: 'Known', zh: '已掌握' }];
+const lvOf = v => v.lvl || 0;
+const touch = v => { v.upd = Date.now(); save(); };
+let vFilter = 'all', wordId = null;
+function findMsg(id) { for (const c of S.conversations) { const m = c.messages.find(m => m.id === id); if (m) return { c, m }; } return null; }
+const pyOf = v => v.zh && isZh(v.zh) && v.zh.length <= 20 ? py(v.zh) : '';
+// English dictionary (free, no key): phonetic, part of speech, definitions, examples — fetched once per word, kept with the word
+async function loadDict(v) {
+  if (v.dict !== undefined || !/^[A-Za-z][A-Za-z' -]{0,40}$/.test(v.en.trim())) { if (v.dict === undefined) v.dict = null; return; }
+  try {
+    const r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(v.en.trim().toLowerCase()));
+    if (!r.ok) { v.dict = null; touch(v); return; }
+    const j = (await r.json())[0] || {};
+    const defs = []; for (const mn of j.meanings || []) for (const d of (mn.definitions || []).slice(0, 2)) if (defs.length < 4) defs.push({ pos: mn.partOfSpeech, d: d.definition, ex: d.example || '' });
+    v.dict = { ph: j.phonetic || (j.phonetics || []).map(x => x.text).find(Boolean) || '', pos: [...new Set((j.meanings || []).map(m => m.partOfSpeech))].slice(0, 3), defs };
+    touch(v);
+  } catch { /* offline: try again next time */ }
+}
+function highlightWord(text, w) { const t = esc(text); const q = esc(w.trim()); if (!q) return t; const i = t.toLowerCase().indexOf(q.toLowerCase()); return i < 0 ? t : t.slice(0, i) + '<mark>' + t.slice(i, i + q.length) + '</mark>' + t.slice(i + q.length); }
+function vocabListHTML() {
+  const n = k => S.vocab.filter(v => k === 'all' || lvOf(v) === k).length;
+  const chips = `<div class="vfilter">${[['all', 'All 全部'], [0, LV[0].en + ' ' + LV[0].zh], [1, LV[1].en + ' ' + LV[1].zh], [2, LV[2].en + ' ' + LV[2].zh]].map(([k, l]) =>
+    `<button type="button" data-vf="${k}" class="${String(vFilter) === String(k) ? 'on' : ''} ${k === 'all' ? '' : 'lv' + k}">${k === 'all' ? '' : '<span class="dot"></span>'}${l} ${n(k)}</button>`).join('')}</div>`;
+  const list = [...S.vocab].reverse().filter(v => vFilter === 'all' || lvOf(v) === vFilter);
+  return chips + (list.length ? list.map(v => `<div class="vocab lv${lvOf(v)}" data-vopen="${v.id}" title="Open word card 打开词卡">
+    <div class="en">${esc(v.en)}${v.dict && v.dict.pos && v.dict.pos[0] ? `<span class="pos">${esc(v.dict.pos[0])}</span>` : ''}<button class="icon" data-say="${v.id}" title="Listen">🔊</button></div>
+    <div class="zh">${esc(v.zh || '')}<span class="py">${esc(pyOf(v))}</span></div></div>`).join('') : '<div class="empty" style="margin-top:16px">No words here 这里没有词</div>');
+}
+function openWord(id) { wordId = id; renderWordCard(); if (!$('#wordDlg').open) $('#wordDlg').showModal(); const v = S.vocab.find(v => v.id === id); if (v && v.dict === undefined) loadDict(v).then(() => wordId === id && renderWordCard()); }
+function renderWordCard() {
+  const v = S.vocab.find(v => v.id === wordId); if (!v) return $('#wordDlg').close();
+  const src = v.from && findMsg(v.from), d = v.dict;
+  const defs = d === undefined ? '<p class="foot">Looking it up… 查词中</p>' : d && d.defs.length
+    ? '<ol>' + d.defs.map(x => `<li><i>${esc(x.pos)}</i> ${esc(x.d)}${x.ex ? `<span class="ex">“${esc(x.ex)}”</span>` : ''}</li>`).join('') + '</ol>'
+    : '<p class="foot">No dictionary entry (phrases often have none). 词典里没有这个词组。</p>';
+  $('#wordCard').innerHTML = `
+    <div class="wc-head"><span class="wc-en">${esc(v.en)}</span><button type="button" class="icon" data-wsay="en" title="Listen">🔊</button><button type="button" class="icon" data-wsay="slow" title="Slowly 慢速">🐢</button></div>
+    <div class="wc-ph">${d && d.ph ? esc(d.ph) + ' · ' : ''}${d && d.pos ? esc(d.pos.join(', ')) : ''}</div>
+    <div class="wc-zh">${esc(v.zh || '')}<span class="py">${esc(pyOf(v))}</span>${v.zh && isZh(v.zh) ? '<button type="button" class="icon" data-wsay="zh" title="听中文">🔊 中</button>' : '<button type="button" class="icon" data-wtr="1">↻ Get Chinese 查中文</button>'}<button type="button" class="icon" data-wedit="1" title="Edit the Chinese meaning 修改中文意思">✏️</button></div>
+    <div class="wc-lv">${LV.map((l, k) => `<button type="button" class="lv${k} ${lvOf(v) === k ? 'on' : ''}" data-wlv="${k}">${l.en} ${l.zh}</button>`).join('')}</div>
+    <h3>Meaning 英文释义</h3>${defs}
+    <h3>From your chat 聊天里的原句</h3>${src ? `<div class="src">${highlightWord(src.m.text, v.en)}${src.m.tr ? `<div class="foot">${highlightWord(src.m.tr, v.zh || '')}</div>` : ''}
+      <div class="foot">— ${esc(nameOf(src.m.speaker))}, ${esc(dayLabel(src.m.ts))} <button type="button" class="icon" data-wgo="1">↪ Go to message 跳到消息</button></div></div>` : '<p class="foot">The message was deleted. 原消息已删除。</p>'}
+    <h3>My note 我的笔记</h3><textarea id="wNote" rows="2" placeholder="Your own example, how to remember it… 自己造个句、怎么记">${esc(v.note || '')}</textarea>
+    <div class="foot">Saved by ${esc(nameOf(v.by || 'A'))} · ${esc(dayLabel(v.ts))}${v.reps ? ` · practised ${v.reps}× 练习 ${v.reps} 次` : ''}</div>`;
+}
+$('#wordCard').onclick = e => {
+  const v = S.vocab.find(v => v.id === wordId); if (!v) return;
+  const say = e.target.closest('[data-wsay]'), lv = e.target.closest('[data-wlv]'), go = e.target.closest('[data-wgo]');
+  if (e.target.closest('[data-wtr]')) { translate(v.en, 'en', 'zh').then(z => { if (z && isZh(z)) { v.zh = z; touch(v); renderWordCard(); renderSide(); } else toast('Translation failed — use ✏️ 翻译失败，可以点 ✏️ 自己填'); }); return; }
+  if (e.target.closest('[data-wedit]')) { const z = prompt('Chinese meaning 中文意思:', v.zh || ''); if (z !== null) { v.zh = z.trim(); touch(v); renderWordCard(); renderSide(); } return; }
+  if (say) { const k = say.dataset.wsay; if (k === 'zh') speak(v.zh, 'zh'); else { const r = S.settings.rate; if (k === 'slow') S.settings.rate = 0.55; speak(v.en, 'en'); S.settings.rate = r; } }
+  if (lv) { v.lvl = +lv.dataset.wlv; if (v.lvl === 2) { v.box = Math.max(v.box || 0, 3); } touch(v); renderWordCard(); renderSide(); }
+  if (go) { const f = findMsg(v.from); if (!f) return; $('#wordDlg').close(); sideTab = 'chats'; S.activeId = f.c.id; query = ''; $('#search').value = ''; save(); renderAll(); $('#side').classList.remove('open');
+    const el = document.querySelector(`.msg[data-id="${f.m.id}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2200); } }
+};
+$('#wordCard').addEventListener('change', e => { if (e.target.id !== 'wNote') return; const v = S.vocab.find(v => v.id === wordId); if (v) { v.note = e.target.value.trim(); touch(v); } });
+const wordOrder = () => [...S.vocab].reverse().filter(v => vFilter === 'all' || lvOf(v) === vFilter).map(v => v.id);
+$('#wPrev').onclick = () => { const o = wordOrder(), i = o.indexOf(wordId); if (o.length) openWord(o[(i - 1 + o.length) % o.length]); };
+$('#wNext').onclick = () => { const o = wordOrder(), i = o.indexOf(wordId); if (o.length) openWord(o[(i + 1) % o.length]); };
+$('#wDel').onclick = () => { const v = S.vocab.find(v => v.id === wordId); if (!v || !confirm(`Delete “${v.en}”? 删除这个词？`)) return;
+  S.vocab = S.vocab.filter(x => x !== v); markDeleted(v.id); save(); $('#wordDlg').close(); renderSide(); };
+
+// ---------- practice: words you know least and words that are due come first; both directions ----------
+const DAY = 864e5, BOX_DAYS = [0, 1, 3, 7, 14, 30];
+const dueWords = () => S.vocab.filter(v => (v.due || 0) <= Date.now());
+let card = null, flipped = false, cardDir = 'zh', doneToday = 0;
+function openQuiz() { doneToday = 0; nextCard(); $('#quizDlg').showModal(); }
 function nextCard() {
   const pool = S.vocab; if (!pool.length) return;
-  let c; do { c = pool[Math.floor(Math.random() * pool.length)]; } while (pool.length > 1 && c === card);
-  card = c; flipped = false;
-  $('#card').innerHTML = `<div>${esc(c.zh || c.en)}</div><div class="ans" style="visibility:hidden">${esc(c.en)}</div>`;
+  const due = dueWords(); const src = due.length ? due : pool;
+  const sorted = [...src].sort((a, b) => lvOf(a) - lvOf(b) || (a.due || 0) - (b.due || 0));
+  const top = sorted.slice(0, Math.min(5, sorted.length)).filter(v => v !== card);
+  card = (top.length ? top : sorted)[Math.floor(Math.random() * (top.length || sorted.length))];
+  flipped = false; cardDir = card.zh && Math.random() < 0.5 ? 'zh' : 'en';
+  const ex = (() => { const f = card.from && findMsg(card.from); return f ? highlightWord(f.m.text, card.en) : card.dict && card.dict.defs[0] && card.dict.defs[0].ex ? esc(card.dict.defs[0].ex) : ''; })();
+  const front = cardDir === 'zh' ? `${esc(card.zh)}<div class="py">${esc(pyOf(card))}</div>` : esc(card.en);
+  const back = cardDir === 'zh' ? esc(card.en) + (card.dict && card.dict.ph ? ` <span class="py">${esc(card.dict.ph)}</span>` : '') : `${esc(card.zh || '')} <span class="py">${esc(pyOf(card))}</span>`;
+  $('#card').innerHTML = `<div class="lv${lvOf(card)}" style="border-top:4px solid var(--lv);padding-top:10px">${front}</div><div class="ans" style="visibility:hidden">${back}${ex ? `<div class="ex">${ex}</div>` : ''}</div>`;
+  $('#qprog').textContent = `${cardDir === 'zh' ? '中 → EN' : 'EN → 中'} · due 待复习 ${dueWords().length} · done 已练 ${doneToday}`;
+  $('#grade').hidden = true; $('#cardFlip').hidden = false;
+  if (cardDir === 'en') speak(card.en, 'en');
+  if (card.dict === undefined) loadDict(card);
 }
-$('#cardFlip').onclick = () => { flipped = true; $('#card .ans').style.visibility = 'visible'; speak(card.en, 'en'); };
-$('#cardNext').onclick = nextCard;
+$('#cardFlip').onclick = () => { flipped = true; $('#card .ans').style.visibility = 'visible'; $('#grade').hidden = false; $('#cardFlip').hidden = true; if (cardDir === 'zh') speak(card.en, 'en'); else if (card.zh) speak(card.zh, 'zh'); };
+$('#grade').onclick = e => { const b = e.target.closest('[data-g]'); if (!b || !card) return; const g = +b.dataset.g, v = card;
+  v.box = g === 0 ? 0 : g === 1 ? Math.max(1, v.box || 0) : Math.min(5, (v.box || 0) + 1);
+  v.due = Date.now() + (g === 0 ? 0 : BOX_DAYS[v.box] * DAY); v.lvl = v.box >= 3 ? 2 : v.box >= 1 || g > 0 ? 1 : (v.reps ? 1 : 0); if (g === 0 && v.lvl === 0 && v.reps) v.lvl = 1;
+  v.reps = (v.reps || 0) + 1; doneToday++; touch(v); renderSide(); nextCard(); };
 $('#cardSpeak').onclick = () => card && speak(card.en, 'en');
 
 // ---------- export / import ----------
@@ -1120,7 +1226,9 @@ tool.onclick = async e => {
     const { start, end } = selCtx, snip = m.text.slice(start, end);
     if (t === 'star') { hideTool(); const zh = isZh(snip), other = await translate(snip, zh ? 'zh' : 'en', zh ? 'en' : 'zh');
       const en = zh ? other : snip; if (!en) return toast('Translation failed');
-      S.vocab.push({ id: uid(), ts: Date.now(), en, zh: zh ? snip : (other || ''), from: m.id }); save(); renderSide(); return toast('⭐ Saved: ' + en.slice(0, 40)); }
+      if (S.vocab.some(v => v.en.toLowerCase() === en.toLowerCase())) return toast('Already saved 已收藏');
+      { const v = { id: uid(), ts: Date.now(), en, zh: zh ? snip : (other || ''), from: m.id, by: S.speaker, lvl: 0, box: 0, due: 0 }; S.vocab.push(v); save(); loadDict(v).then(renderSide); }
+      renderSide(); return toast('⭐ Saved: ' + en.slice(0, 40)); }
     const k = { id: uid(), start, end, type: t, ts: Date.now(), by: S.speaker };
     if (t === 'red') { const f = prompt(`Correct “${snip}” to 改成:`, snip); if (f === null) return; k.fix = f.trim(); }
     if (t === 'note') { const n = prompt(`Comment on “${snip}” 批注:`); if (!n) return; k.note = n.trim(); }
@@ -1135,7 +1243,9 @@ $('#sideList').onclick = e => {
   if (del) { e.stopPropagation(); const c = S.conversations.find(c => c.id === del.dataset.del);
     if (confirm(`Delete chat “${c.title}” (${c.messages.length} messages)? 删除整个对话？`)) { S.conversations = S.conversations.filter(x => x !== c); markDeleted(c.id); if (!S.conversations.length) S.conversations.push(newConv()); if (S.activeId === c.id) S.activeId = S.conversations[0].id; save(); renderAll(); } return; }
   if (vdel) { S.vocab = S.vocab.filter(v => v.id !== vdel.dataset.vdel); markDeleted(vdel.dataset.vdel); save(); renderSide(); return; }
-  if (say) { const v = S.vocab.find(v => v.id === say.dataset.say); if (v) speak(v.en, 'en'); return; }
+  if (say) { e.stopPropagation(); const v = S.vocab.find(v => v.id === say.dataset.say); if (v) speak(v.en, 'en'); return; }
+  const vf = e.target.closest('[data-vf]'); if (vf) { vFilter = vf.dataset.vf === 'all' ? 'all' : +vf.dataset.vf; renderSide(); return; }
+  const vo = e.target.closest('[data-vopen]'); if (vo) { openWord(vo.dataset.vopen); return; }
   if (cv) { S.activeId = cv.dataset.id; query = ''; $('#search').value = ''; save(); renderAll(); $('#side').classList.remove('open'); }
 };
 $('#title').onclick = () => { const t = prompt('Rename chat 重命名:', conv().title); if (t && t.trim()) { conv().title = t.trim(); save(); renderHeader(); renderSide(); } };
@@ -1209,7 +1319,7 @@ renderAll(); pullServer().then(resumeTranslations);
   const q = new URLSearchParams(location.search).get('lang');
   if (q) lsSet('bb-lang', q === 'en' ? 'en' : '');
   const ZH = /[\u2e80-\u303f\u3400-\u9fff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef“”‘’]/;
-  const KEEP = '.bubble, #preview, #phrases, .vocab, #sideList .t, #title, textarea, #who button, #micLang, #helpBtn, #zhBtn, #langBtn, script, style';
+  const KEEP = '.bubble, #preview, #phrases, .vocab, #wordCard .wc-zh, #wordCard .src, #wordCard textarea, #card, #sideList .t, #title, textarea, #who button, #micLang, #helpBtn, #zhBtn, #langBtn, script, style';
   const strip = t => !ZH.test(t) ? t : t
     .replace(/[（(][^（）()]*[\u3400-\u9fff][^（）()]*[）)]/g, '')                          // （中文） or (中文)
     .replace(/[\u2e80-\u303f\u3400-\u9fff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef“”‘’]+/g, ' ') // the Chinese itself
