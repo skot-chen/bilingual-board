@@ -286,7 +286,8 @@ header .search{flex-shrink:6;min-width:90px}
 .dlg-head h2{margin:0;flex:1}.dlg-x{font-size:1.2em;min-width:40px;min-height:36px}
 dialog{overflow-x:hidden}
 @media (max-width:760px){
-  html,body{overflow:hidden}
+  html,body{overflow:hidden;overscroll-behavior:none}
+  .app{position:fixed;left:0;right:0;top:var(--appTop,0px)}
   #menuBtn{font-size:1.4em;opacity:1;min-width:42px;min-height:40px;padding:2px 8px}
   #settingsBtn{margin-left:6px;min-width:38px;min-height:38px}
   aside.open + #sideShade{display:block;position:fixed;inset:0;background:#0006;z-index:4}
@@ -1964,9 +1965,10 @@ PHONE.addEventListener('change', placeSend); placeSend();
 $('#settingsDlg').addEventListener('click', e => { const d = e.currentTarget; if (e.target !== d) return; const r = d.getBoundingClientRect();
   if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close('close'); });
 // Keep the app exactly as tall as the visible screen (the phone keyboard and Safari's bars change it).
-if (window.visualViewport) { const fitVV = () => { if (Math.abs(visualViewport.scale - 1) > 0.01) return;
-    document.documentElement.style.setProperty('--appH', visualViewport.height + 'px'); if (PHONE.matches && scrollY) scrollTo(0, 0); };
-  visualViewport.addEventListener('resize', fitVV); fitVV(); }
+// On iPhone the page could slide up out of view (header hidden until the status bar was tapped); the app is pinned to the visible area instead.
+if (window.visualViewport) { const fitVV = () => { if (Math.abs(visualViewport.scale - 1) > 0.01) return; const st = document.documentElement.style;
+    st.setProperty('--appH', visualViewport.height + 'px'); st.setProperty('--appTop', (PHONE.matches ? visualViewport.offsetTop : 0) + 'px'); };
+  visualViewport.addEventListener('resize', fitVV); visualViewport.addEventListener('scroll', fitVV); PHONE.addEventListener('change', fitVV); fitVV(); }
 $('#settingsBtn').onclick = () => {
   const s = S.settings; $('#sNameA').value = s.nameA; $('#sNameB').value = s.nameB; fillMeMenu(); fillPlaceMenus(); $('#sTrFold').value = lsGet('bb-trfold'); $('#sRcpt').checked = !!(ME && S.rcpt?.[ME]?.on); $('#sHide').checked = s.hideZh; $('#sSwitch').checked = s.autoSwitch; $('#sGrammar').checked = s.autoGrammar;
   $('#sGEngine').value = gEng(); $('#sGEngine').disabled = WEB; $('#sModel').value = s.aiModel; $('#sKey').value = ''; claudeStatus();
