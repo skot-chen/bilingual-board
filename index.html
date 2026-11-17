@@ -143,6 +143,12 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .phrases button small{display:block;color:var(--muted)}
 .row{display:flex;gap:8px;align-items:flex-end}
 .draft-wrap{position:relative;margin-bottom:8px}
+.typing{align-self:flex-start;margin:0 0 4px 16px;padding:4px 12px;border-radius:999px;font-size:.8em;color:var(--muted);background:var(--panel);border:1px solid var(--line)}
+.typing.A{border-color:var(--a)}.typing.B{border-color:var(--b)}
+.typing .dots i{display:inline-block;width:5px;height:5px;margin:0 1px 1px;border-radius:50%;background:currentColor;animation:tdot 1.2s infinite}
+.typing .dots i:nth-child(2){animation-delay:.2s}.typing .dots i:nth-child(3){animation-delay:.4s}
+@keyframes tdot{0%,60%,100%{opacity:.25;transform:none}30%{opacity:1;transform:translateY(-3px)}}
+.meta .st{font-size:.85em;opacity:.8}
 .attach{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}.attach:empty{display:none}
 .attach .pend{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
 .attach .pend img{display:block;height:72px;max-width:160px;object-fit:cover}
@@ -246,6 +252,7 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
       <button class="icon" id="settingsBtn" title="Settings 设置" aria-label="Settings">⚙️</button>
     </header>
     <div id="timeline" aria-live="polite"></div>
+    <div id="typing" class="typing" hidden aria-live="polite"></div>
     <div class="composer" id="composer">
       <div class="grip" id="grip" title="Drag up/down to resize the input box 上下拖动调整输入框高度" role="separator" aria-orientation="horizontal"><span>↕ drag 拖动</span></div>
       <div class="who" id="who"></div>
@@ -460,7 +467,7 @@ function usualOf(devId) {
 }
 function setMe(v) { ME = v === 'A' || v === 'B' ? v : ''; lsSet('bb-me', ME); lsSet('bb-me-set', '1'); if (ME) S.speaker = ME; save(); renderAll(); }
 const GH = { token: lsGet('bb-gh-token'), repo: lsGet('bb-gh-repo') || (location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] + '/bilingual-board-data' : ''),
-  busy: false, again: false, timer: 0, msg: '' };
+  busy: false, again: false, timer: 0, msg: '', unsent: new Set() };
 const b64e = str => { const b = new TextEncoder().encode(str); let o = ''; for (let i = 0; i < b.length; i += 0x8000) o += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(o); };
 const b64d = str => new TextDecoder().decode(Uint8Array.from(atob(str.replace(/\s/g, '')), c => c.charCodeAt(0)));
 const ghFetch = (path, opt = {}, accept = 'application/vnd.github+json') => fetch('https://api.github.com/repos/' + GH.repo + path,
@@ -497,9 +504,10 @@ async function ghSync(quiet) {
       } else if (r.status === 404) { GH.sha = undefined; GH.remote = null; GH.etag = ''; }
       else throw r.status;
       const out = JSON.stringify(S);
-      if (GH.remote && JSON.stringify(GH.remote) === out) { GH.dirty = false; break; } // nothing new to upload
+      const inOut = [...GH.unsent]; // messages included in this upload
+      if (GH.remote && JSON.stringify(GH.remote) === out) { GH.dirty = false; markSent(inOut); break; } // nothing new to upload
       const put = await ghFetch('/contents/' + GH_FILE, { method: 'PUT', body: JSON.stringify({ message: 'Update chats', content: b64e(out), ...(GH.sha ? { sha: GH.sha } : {}) }) });
-      if (put.ok) { const j = await put.json().catch(() => ({})); GH.sha = j.content && j.content.sha; GH.remote = JSON.parse(out); GH.etag = ''; GH.dirty = false; changed = true; break; }
+      if (put.ok) { const j = await put.json().catch(() => ({})); GH.sha = j.content && j.content.sha; GH.remote = JSON.parse(out); GH.etag = ''; GH.dirty = false; changed = true; markSent(inOut); break; }
       if ((put.status === 409 || put.status === 422) && attempt < 2) { GH.etag = ''; continue; } // another device saved meanwhile: fetch, merge, try again
       throw put.status;
     }
@@ -508,6 +516,9 @@ async function ghSync(quiet) {
   GH.busy = false;
   if (GH.again) { GH.again = false; ghSync(true); }
 }
+function markSent(ids) { for (const id of ids) { GH.unsent.delete(id); const el = document.querySelector(`.msg[data-id="${id}"] .meta .st`); if (el) { el.textContent = '✓'; el.title = 'Sent — the other device can see it 已发出'; } } }
+const sendState = m => !GH.token || !m.via || m.via.d !== DEV ? '' : GH.unsent.has(m.id)
+  ? '<span class="st" title="Sending 发送中">⏳</span>' : '<span class="st" title="Sent — the other device can see it 已发出">✓</span>';
 function ghSoon(ms = 1500) { if (!GH.token) return; GH.dirty = true; clearTimeout(GH.timer); GH.timer = setTimeout(() => ghSync(true), ms); }
 // pick up messages written on another device: right away when the page comes back, then every 4 s while it is open
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ghSync(true); });
@@ -1025,7 +1036,7 @@ function msgHTML(m) {
     : (m.img ? picHTML(m) : '') + (m.text ? `<div class="orig">${marksHTML(m)}</div>` : '') + notesList(m);
   if (!m.text && m.img) tr = ''; // a picture without words: nothing to translate
   const html = `<div class="msg ${m.speaker}${isRight(m.speaker) ? ' right' : ''}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
-  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${!m.text && m.img ? '🖼' : m.lang === 'zh' ? '中文' : 'EN'}</span>${viaTag(m)}${edited}</div>
+  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${!m.text && m.img ? '🖼' : m.lang === 'zh' ? '中文' : 'EN'}</span>${viaTag(m)}${edited}${sendState(m)}</div>
   ${body}${tr}${fix}${note}
   <div class="acts">
     <button class="icon" data-act="edit" title="Edit / fix typos 修改（改错字）">✏️ Edit</button>
@@ -1084,9 +1095,10 @@ function send() {
   pics.forEach((p, i) => { const last = i === pics.length - 1;
     const pm = { id: uid(), ts: Date.now() + i, speaker: S.speaker, text: last ? text : '', lang: last && isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME }, img: { id: p.id, w: p.w, h: p.h } };
     if (!pm.text) pm.tr = '';
-    picUrls.set(p.id, p.url); conv().messages.push(pm); uploadPic(p.id, p.blob); if (last && text) translateMsg(pm); });
+    picUrls.set(p.id, p.url); if (GH.token) GH.unsent.add(pm.id); conv().messages.push(pm); uploadPic(p.id, p.blob); if (last && text) translateMsg(pm); });
   if (pics.length) { $('#draft').value = ''; autoGrow(); save(); ghSoon(300); renderTimeline(); renderSide(); renderHeader(); $('#draft').focus(); return; }
   const m = { id: uid(), ts: Date.now(), speaker: S.speaker, text, lang: isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME } };
+  if (GH.token) GH.unsent.add(m.id);
   conv().messages.push(m);
   $('#draft').value = ''; autoGrow(); closePreview();
   if (S.settings.autoSwitch && !ME) S.speaker = S.speaker === 'A' ? 'B' : 'A';
@@ -1452,6 +1464,38 @@ $('#syncConnect').onclick = async () => {
 };
 $('#syncNow').onclick = () => { GH.etag = ''; ghSync(); };
 $('#draft').addEventListener('input', prepTranslation);
+const TYPING_TTL = 12000;
+const TY = { lastPut: 0, sha: {}, etag: {}, seen: { A: 0, B: 0 }, mine: { A: 0, B: 0 } };
+const typingPath = k => '/contents/typing-' + k + '.json';
+async function sendTyping() { // at most every 8 s while typing
+  if (!GH.token || !GH.repo) return;
+  const now = Date.now(); if (now - TY.lastPut < 8000) return; TY.lastPut = now;
+  const k = ME || S.speaker; TY.mine[k] = now;
+  for (let i = 0; i < 2; i++) {
+    const body = { message: 'typing', content: b64e(JSON.stringify({ ts: now })), ...(TY.sha[k] ? { sha: TY.sha[k] } : {}) };
+    const r = await ghFetch(typingPath(k), { method: 'PUT', body: JSON.stringify(body) }).catch(() => null);
+    if (r && r.ok) { const j = await r.json().catch(() => ({})); TY.sha[k] = j.content && j.content.sha; return; }
+    if (r && (r.status === 409 || r.status === 422)) { const g = await ghFetch(typingPath(k)).catch(() => null); if (g && g.ok) { TY.sha[k] = (await g.json()).sha; continue; } }
+    return;
+  }
+}
+$('#draft').addEventListener('input', () => { if ($('#draft').value.trim()) sendTyping(); });
+async function checkTyping() {
+  if (!GH.token || !GH.repo) return;
+  for (const k of ME ? [ME === 'A' ? 'B' : 'A'] : ['A', 'B']) {
+    const r = await ghFetch(typingPath(k), TY.etag[k] ? { h: { 'If-None-Match': TY.etag[k] } } : {}).catch(() => null);
+    if (r && r.ok) { TY.etag[k] = r.headers.get('etag') || ''; try { const j = await r.json(); TY.sha[k] = j.sha; TY.seen[k] = JSON.parse(b64d(j.content)).ts || 0; } catch {} }
+  }
+  renderTyping();
+}
+function renderTyping() {
+  const now = Date.now(), c = conv();
+  const who = ['A', 'B'].filter(k => TY.seen[k] && now - TY.seen[k] < TYPING_TTL && TY.seen[k] !== TY.mine[k] && !c.messages.some(m => m.speaker === k && m.ts >= TY.seen[k]));
+  const el = $('#typing'); el.hidden = !who.length;
+  if (who.length) { el.className = 'typing ' + who[0]; el.innerHTML = `${esc(nameOf(who[0]))} is typing<span class="dots"><i></i><i></i><i></i></span> 正在输入…`; }
+}
+setInterval(() => { if (document.visibilityState === 'visible') checkTyping(); }, 4000);
+setInterval(renderTyping, 1000);
 $('#syncForget').onclick = () => {
   if (!confirm('Forget the GitHub key on this device? Chats are not deleted.\n在这个浏览器里删掉钥匙？聊天记录不会被删除。')) return;
   GH.token = ''; GH.msg = ''; lsSet('bb-gh-token', ''); renderSyncBox(); if (WEB) setSaveState('Saved in this browser 存在本浏览器');

@@ -90,7 +90,7 @@ To see the same chats on your phone and computer (web or desktop version), sync 
 2. Make a [fine-grained token](https://github.com/settings/personal-access-tokens/new): under Repository access choose **Only select repositories** and pick that repository; under Permissions set **Contents** to **Read and write**.
 3. In ⚙️ Settings → ☁ Sync, enter the repository (`you/bilingual-board-data`) and paste the token. Then click **Connect**. Do this once on each device.
 
-The chats are stored as `board.json` in that repository. The token is kept only in that browser. The board refuses public repositories, so your chats are never published.
+The chats are stored as `board.json` in that repository. While someone types, a tiny `typing-A.json` / `typing-B.json` file is updated (at most every 8 s), so the other device shows "… is typing". Your own messages show ⏳ while uploading and ✓ once the other device can get them. The token is kept only in that browser. The board refuses public repositories, so your chats are never published.
 
 想在手机和电脑上看到同样的聊天：建一个**私有**仓库，生成一把只能读写这个仓库的钥匙（fine-grained token，Contents: Read and write），在 ⚙️ 设置 → ☁ 同步 里填仓库名、粘贴钥匙、点连接。每台设备做一次。
 
