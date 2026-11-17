@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Bilingual Board · 双语聊天板</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -305,6 +305,8 @@ dialog{overflow-x:hidden}
   dialog .field{flex-wrap:wrap}dialog .field > label{flex:1 1 100%}
   dialog .field input[type=text],dialog .field input[type=password],dialog .field select,dialog .field .place,dialog .field .sync-lock{width:100%;flex:1 1 100%}
 }
+.who-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}.who-row .who{flex:1 1 auto;min-width:0;margin-bottom:0}.quick-acts{display:none;gap:6px;margin-left:auto}
+@media (max-width:760px){.quick-acts{display:flex}.quick-acts button{min-height:38px} header{padding-top:max(8px,env(safe-area-inset-top))}}
 </style>
 <script src="vendor/pinyin-pro.js"></script>
 <script src="vendor/tz-countries.js"></script><!-- pinyin for Chinese text (MIT, pinyin-pro 3.29.5) -->
@@ -337,7 +339,7 @@ dialog{overflow-x:hidden}
     <div id="typing" class="typing" hidden aria-live="polite"></div>
     <div class="composer" id="composer">
       <div class="grip" id="grip" title="Drag up/down to resize the input box 上下拖动调整输入框高度" role="separator" aria-orientation="horizontal"><span>↕ drag 拖动</span></div>
-      <div class="who" id="who"></div>
+      <div class="who-row"><div class="who" id="who"></div><span class="quick-acts" id="quickActs"></span></div>
       <div class="phrases" id="phrases"></div>
       <div class="replybar" id="replyBar" hidden></div>
       <div class="attach" id="attach"></div>
@@ -680,6 +682,8 @@ function updateBadge() {
   const n = S.conversations.reduce((t, c) => t + unreadIn(c), 0);
   document.title = (n ? '(' + n + ') ' : '') + TITLE0;
   if (n === badgeN) return; badgeN = n;
+  // number on the installed app's icon (Android, computers; iPhone only while the app is open and notifications are allowed)
+  if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
   const link = document.querySelector('link[rel=icon]'); if (!link) return;
   if (!n) { link.href = 'icon.svg'; return; }
   const draw = () => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d');
@@ -775,7 +779,8 @@ const sendState = m => !GH.token || !m.via || m.via.d !== DEV ? '' : GH.unsent.h
 function ghSoon(ms = 1500) { if (!GH.token) return; GH.dirty = true; clearTimeout(GH.timer); GH.timer = setTimeout(() => ghSync(true), ms); }
 // pick up messages written on another device: right away when the page comes back, then every 4 s while it is open
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ghSync(true); });
-setInterval(() => { if (document.visibilityState === 'visible') ghSync(true); }, 4000);
+let ghTick = 0; // every 4 s while on screen; every 30 s in the background, so the unread count still updates
+setInterval(() => { ghTick++; if (document.visibilityState === 'visible' || ghTick % 8 === 0) ghSync(true); }, 4000);
 // A small lock on the sync settings, so nobody changes or removes the sync key by accident on a shared device.
 // Only a hash of the password is in this (public) code. Unlocking lasts until this browser tab is closed.
 const SYNC_PW_HASH = 'a1f3f3d030e0209799a2cd367dca486c8a362063fd0010bd8986351fb2f01b4a';
@@ -1964,7 +1969,10 @@ $('#sideShade').onclick = () => $('#side').classList.remove('open');
 $('#phBtn').onclick = () => $('#composer').classList.toggle('ph-on');
 $('#phrases').addEventListener('click', e => { if (PHONE.matches && e.target.closest('[data-ph]')) $('#composer').classList.remove('ph-on'); });
 // Phones: Send sits next to the message box.
-function placeSend() { const b = $('#sendBtn'); if (PHONE.matches) $('.draft-wrap').append(b); else $('#checkBtn').closest('.row').append(b); }
+// Phones: ✍️ and 中→EN sit next to the name button (easy to reach), Send next to the message box.
+const CROW = $('#sendBtn').closest('.row'), QBTNS = ['#checkBtn', '#helpBtn', '#zhBtn'].map(q => $(q));
+function placeSend() { const b = $('#sendBtn');
+  if (PHONE.matches) { $('.draft-wrap').append(b); $('#quickActs').append(...QBTNS); } else { $('.eng-wrap').after(...QBTNS); CROW.append(b); } }
 PHONE.addEventListener('change', () => { placeSend(); autoGrow(); renderComposer(); }); placeSend(); autoGrow();
 // Settings: tap outside the box to close it (on a computer; on a phone it fills the screen and has ✕ at the top).
 $('#settingsDlg').addEventListener('click', e => { const d = e.currentTarget; if (e.target !== d) return; const r = d.getBoundingClientRect();
