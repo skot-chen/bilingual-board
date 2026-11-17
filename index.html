@@ -35,6 +35,9 @@ aside{border-right:1px solid var(--line);background:var(--panel);display:flex;fl
 .conv .t{font-weight:600;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.25;overflow-wrap:anywhere}
 .conv .d{color:var(--muted);font-size:.78em}
 .conv .tz{color:var(--muted);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conv-side{display:flex;flex-direction:column;align-items:center;gap:2px;align-self:flex-start}
+.conv .conv-ref{font-size:.75em;line-height:1;padding:3px;border-radius:6px;background:none;border:1px solid transparent;cursor:pointer;opacity:.55}
+.conv .conv-ref:hover{opacity:1;border-color:var(--a);background:var(--a-soft)}.conv .conv-ref:disabled{cursor:wait;opacity:.3}
 .conv .cat-ic{font-size:1.15em;line-height:1;padding:4px;border-radius:8px;align-self:flex-start;cursor:pointer;background:none;border:0}
 .conv .cat-ic:hover{background:var(--line)}
 .conv-main{display:flex;gap:6px;min-width:0;flex:1}
@@ -515,11 +518,14 @@ $('#cRefresh').onclick = async () => { const c = S.conversations.find(c => c.id 
   if (t) { $('#cTitle').value = t.en; $('#cTitle').dataset.en = t.en; $('#cTitle').dataset.zh = t.zh; $('#cTitleHint').textContent = t.zh ? '中文: ' + t.zh : ''; } };
 // a title typed by hand is never replaced without asking
 const isManualTitle = c => !!c.titleSet && c.titleBy !== 'auto';
-$('#titleRefresh').onclick = () => { const c = conv();
+let lockId = null; // the chat whose title 🔄 wants to replace
+function askRefresh(c) { if (!c) return;
   if (!isManualTitle(c)) return refreshTitle(c, true);
-  $('#lockCur').textContent = '“' + c.title + '”' + (c.titleZh ? ' · ' + c.titleZh : ''); $('#lockDlg').showModal(); };
-$('#lockReplace').onclick = () => { $('#lockDlg').close(); refreshTitle(conv(), true); };
-$('#lockEdit').onclick = () => { $('#lockDlg').close(); openConvDlg(conv().id); };
+  lockId = c.id; $('#lockCur').textContent = '“' + c.title + '”' + (c.titleZh ? ' · ' + c.titleZh : ''); $('#lockDlg').showModal(); }
+$('#titleRefresh').onclick = () => askRefresh(conv());
+const lockConv = () => S.conversations.find(c => c.id === lockId) || conv();
+$('#lockReplace').onclick = () => { $('#lockDlg').close(); refreshTitle(lockConv(), true); };
+$('#lockEdit').onclick = () => { $('#lockDlg').close(); openConvDlg(lockConv().id); };
 $('#cSave').onclick = () => { const c = S.conversations.find(c => c.id === convEditId); if (!c) return;
   const t = $('#cTitle').value.trim();
   if (t) { if (t !== c.title) { const fromSummary = t === $('#cTitle').dataset.en; c.titleZh = fromSummary ? $('#cTitle').dataset.zh : ''; c.titleBy = fromSummary ? 'auto' : 'manual'; } c.title = t; c.titleSet = true; } else if (c.titleSet) { c.titleSet = false; c.title = newConv().title.replace(/^Chat .*/, 'Chat ' + new Date(c.created || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + new Date(c.created || Date.now()).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })); }
@@ -1008,7 +1014,7 @@ function renderSide() {
     const shown = all.filter(c => catFilter === 'all' || convCat(c) === catFilter), nPin = shown.filter(isPinned).length;
     L.innerHTML = chips + shown.map((c, i) => { const t = convTitle(c), k = catById(convCat(c));
       return (i === 0 && nPin ? '<div class="pin-sep">📌 Pinned 置顶 · drag to reorder 可拖动排序</div>' : '') + (i === nPin && nPin ? '<div class="pin-sep">Recent 最近</div>' : '')
-       + `<div class="conv ${c.id === S.activeId ? 'on' : ''} ${isPinned(c) ? 'pinned' : ''}" data-id="${c.id}"><div class="conv-main"><button type="button" class="cat-ic" data-cedit="${c.id}" title="${k.en} ${k.zh} — change title or category 改标题或分类">${k.ic}</button>
+       + `<div class="conv ${c.id === S.activeId ? 'on' : ''} ${isPinned(c) ? 'pinned' : ''}" data-id="${c.id}"><div class="conv-main"><div class="conv-side"><button type="button" class="cat-ic" data-cedit="${c.id}" title="${k.en} ${k.zh} — change title or category 改标题或分类">${k.ic}</button><button type="button" class="conv-ref" data-cref="${c.id}" title="Update this title from the latest chat · 根据最近的聊天更新这个标题" aria-label="Update title">🔄</button></div>
        <div style="min-width:0"><div class="t">${esc(t.en)}</div>${t.zh ? `<div class="tz">${esc(t.zh)}</div>` : ''}
        <div class="d">${c.messages.length} msgs · ${dayLabel(c.messages.at(-1)?.ts || c.created)}</div></div></div>
        <button class="icon pin ${isPinned(c) ? 'on' : ''}" data-pin="${c.id}" title="${isPinned(c) ? 'Unpin 取消置顶' : 'Pin to the top 置顶'}">📌</button><button class="icon" data-del="${c.id}" title="Delete chat">🗑</button></div>`; }).join('');
@@ -1609,6 +1615,7 @@ $('#tabChats').onclick = () => { sideTab = 'chats'; renderSide(); };
 $('#tabVocab').onclick = () => { sideTab = 'vocab'; renderSide(); };
 $('#sideList').onclick = e => {
   if (dragJustEnded) return;
+  const cr = e.target.closest('[data-cref]'); if (cr) { e.stopPropagation(); askRefresh(S.conversations.find(c => c.id === cr.dataset.cref)); return; }
   const pn = e.target.closest('[data-pin]'); if (pn) { e.stopPropagation(); togglePin(pn.dataset.pin); return; }
   const ce = e.target.closest('[data-cedit]'); if (ce) { e.stopPropagation(); openConvDlg(ce.dataset.cedit); return; }
   const cf = e.target.closest('[data-cf]'); if (cf) { catFilter = cf.dataset.cf; renderSide(); return; }
