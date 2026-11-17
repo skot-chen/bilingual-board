@@ -143,6 +143,15 @@ mark{background:#fde68a;color:#000;border-radius:3px}
 .phrases button small{display:block;color:var(--muted)}
 .row{display:flex;gap:8px;align-items:flex-end}
 .draft-wrap{position:relative;margin-bottom:8px}
+.attach{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}.attach:empty{display:none}
+.attach .pend{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.attach .pend img{display:block;height:72px;max-width:160px;object-fit:cover}
+.attach .pend button{position:absolute;top:2px;right:2px;padding:0 6px;border-radius:999px;background:rgba(0,0,0,.6);color:#fff;border:0;cursor:pointer}
+.composer.dropping{outline:2px dashed var(--a);outline-offset:-4px}
+.pic{margin:4px 0 6px}.pic img{display:block;max-width:min(280px,100%);height:auto;border-radius:10px;cursor:zoom-in;background:var(--line)}
+.pic .miss{display:inline-block;padding:18px 14px;border-radius:10px;background:var(--line);color:var(--muted);font-size:.85em}
+#picDlg{padding:0;border:0;background:transparent;max-width:96vw;max-height:94vh}#picDlg img{max-width:96vw;max-height:90vh;display:block;border-radius:8px}
+#picDlg::backdrop{background:rgba(0,0,0,.8)}
 textarea{display:block;width:100%;resize:none;min-height:56px;max-height:70vh;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);line-height:1.45}
 .grip{height:18px;margin:-10px -18px 4px;cursor:ns-resize;display:flex;align-items:center;justify-content:center;gap:8px;touch-action:none;user-select:none;color:var(--muted);font-size:.72em}
 .grip:before{content:"";width:56px;height:5px;border-radius:9px;background:var(--line);transition:background .15s,width .15s}
@@ -241,12 +250,15 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
       <div class="grip" id="grip" title="Drag up/down to resize the input box 上下拖动调整输入框高度" role="separator" aria-orientation="horizontal"><span>↕ drag 拖动</span></div>
       <div class="who" id="who"></div>
       <div class="phrases" id="phrases"></div>
+      <div class="attach" id="attach"></div>
       <div class="draft-wrap">
         <textarea id="draft" rows="2" placeholder="Type in English or 中文… (Enter = send, Shift+Enter = new line)"></textarea>
       </div>
       <div class="row">
         <div class="seg mini" id="micLang" role="group" title="Voice input language 语音输入语言" aria-label="Voice language"><button type="button" data-ml="en-US">EN</button><button type="button" data-ml="zh-CN">中</button></div>
         <button id="micBtn" title="Voice input 语音输入" aria-label="Voice input">🎤</button>
+        <button id="picBtn" type="button" title="Add a picture (or paste a screenshot with Ctrl+V) · 发图片（也可以 Ctrl+V 粘贴截图）" aria-label="Add a picture">🖼</button>
+        <input type="file" id="picFile" accept="image/*" multiple hidden>
         <button id="expandBtn" type="button" title="Bigger / smaller input box 放大/缩小输入框">⤢ Bigger 放大</button>
         <span class="spacer"></span>
         <div class="eng-wrap"><button type="button" id="engineBtn" class="engine-q" aria-haspopup="menu" aria-expanded="false" title="Which checker 用哪个批改引擎"></button>
@@ -318,6 +330,8 @@ header > *{flex-shrink:0} header h1{flex-shrink:1}
     <span id="grade" hidden><button type="button" data-g="0">😵 Forgot 忘了</button><button type="button" data-g="1">🤔 Unsure 模糊</button><button type="button" data-g="2">😀 Got it 记住了</button></span>
     <button value="close" class="primary">Close</button></div>
 </form></dialog>
+
+<dialog id="picDlg"><form method="dialog"><button style="all:unset;cursor:zoom-out;display:block"><img id="picBig" alt=""></button></form></dialog>
 
 <dialog id="convDlg"><form method="dialog">
   <h2>Chat title & category · 对话标题和分类</h2>
@@ -914,6 +928,71 @@ function remapMarks(m, oldText) {
     if (i < 0) return null; const near = m.text.indexOf(snip, Math.max(0, k.start - 20)); if (near >= 0) i = near;
     return { ...k, start: i, end: i + snip.length }; }).filter(Boolean);
 }
+// ---------- pictures ----------
+// The chat file only holds { id, w, h }. The picture itself lives in this browser's IndexedDB and is copied to
+// data/img on the desktop server and to img/<id>.jpg in the ☁ sync repository, so the other device can fetch it.
+const idb = (() => { let dbp; const open = () => dbp ||= new Promise((ok, no) => { const r = indexedDB.open('bb-img', 1); r.onupgradeneeded = () => r.result.createObjectStore('img'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  const tx = (mode, fn) => open().then(db => new Promise((ok, no) => { const t = db.transaction('img', mode); const q = fn(t.objectStore('img')); t.oncomplete = () => ok(q && q.result); t.onerror = () => no(t.error); }));
+  return { get: id => tx('readonly', st => st.get(id)).catch(() => null), put: (id, blob) => tx('readwrite', st => st.put(blob, id)).catch(() => {}) }; })();
+let pendingPics = []; // pictures waiting in the composer: { id, blob, w, h, url }
+async function shrink(file) { // longest side 1600 px, JPEG — a screenshot becomes ~100–300 KB
+  const bmp = await createImageBitmap(file); const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(bmp, 0, 0, w, h);
+  const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.85)); return { blob, w, h };
+}
+async function addPics(files) {
+  for (const f of files) { if (!f || !/^image\//.test(f.type)) continue;
+    if (pendingPics.length >= 6) { toast('Up to 6 pictures at once 一次最多 6 张'); break; }
+    try { const { blob, w, h } = await shrink(f); const id = uid(); pendingPics.push({ id, blob, w, h, url: URL.createObjectURL(blob) }); }
+    catch { toast('Could not read that picture 图片读不出来'); } }
+  renderAttach(); $('#draft').focus();
+}
+function renderAttach() { $('#attach').innerHTML = pendingPics.map(p => `<div class="pend"><img src="${p.url}" alt=""><button type="button" data-unpic="${p.id}" title="Remove 移除">✕</button></div>`).join(''); }
+$('#attach').onclick = e => { const b = e.target.closest('[data-unpic]'); if (!b) return; pendingPics = pendingPics.filter(p => p.id !== b.dataset.unpic); renderAttach(); };
+$('#picBtn').onclick = () => $('#picFile').click();
+$('#picFile').onchange = e => { addPics([...e.target.files]); e.target.value = ''; };
+$('#draft').addEventListener('paste', e => { const fs = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file' && i.type.startsWith('image/')).map(i => i.getAsFile());
+  if (fs.length) { e.preventDefault(); addPics(fs); } });
+$('#composer').addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); $('#composer').classList.add('dropping'); } });
+$('#composer').addEventListener('dragleave', () => $('#composer').classList.remove('dropping'));
+$('#composer').addEventListener('drop', e => { $('#composer').classList.remove('dropping'); const fs = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/')); if (fs.length) { e.preventDefault(); addPics(fs); } });
+const picUrls = new Map();
+const picUpQueue = () => { try { return JSON.parse(lsGet('bb-pic-up') || '[]'); } catch { return []; } };
+async function uploadPic(id, blob) {
+  if (blob) await idb.put(id, blob);
+  let ok = true;
+  if (!WEB) { try { const r = await fetch('/api/img/' + id, { method: 'PUT', body: blob || await idb.get(id) }); ok = r.ok; } catch { ok = false; } }
+  if (GH.token) { try { const b = blob || await idb.get(id); const r = await ghFetch('/contents/img/' + id + '.jpg', { method: 'PUT', body: JSON.stringify({ message: 'Add picture', content: b64eBytes(new Uint8Array(await b.arrayBuffer())) }) });
+    ok = ok && (r.ok || r.status === 422); } catch { ok = false; } } // 422 = already there
+  const q = picUpQueue().filter(x => x !== id); if (!ok) q.push(id); lsSet('bb-pic-up', JSON.stringify(q.slice(-50)));
+}
+function retryPicUploads() { for (const id of picUpQueue()) uploadPic(id); }
+const b64eBytes = b => { let o = ''; for (let i = 0; i < b.length; i += 0x8000) o += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(o); };
+async function picBlob(id) {
+  let b = await idb.get(id); if (b) return b;
+  if (!WEB) { try { const r = await fetch('/api/img/' + id); if (r.ok) b = await r.blob(); } catch {} }
+  if (!b && GH.token) { try { const r = await ghFetch('/contents/img/' + id + '.jpg', {}, 'application/vnd.github.raw'); if (r.ok) b = await r.blob(); } catch {} }
+  if (b) await idb.put(id, b);
+  return b || null;
+}
+function picHTML(m) { const u = picUrls.get(m.img.id); const w = m.img.w || 280, h = m.img.h || 200;
+  return `<div class="pic">${u ? `<img src="${u}" data-pic="${m.img.id}" width="${w}" height="${h}" alt="picture">`
+    : `<span class="miss" data-picwait="${m.img.id}" style="aspect-ratio:${w}/${h};width:min(280px,100%)">🖼 Loading picture… 图片加载中</span>`}</div>`; }
+const picTried = new Map();
+async function hydratePics() {
+  for (const el of document.querySelectorAll('[data-picwait]')) { const id = el.dataset.picwait;
+    if (picUrls.has(id) || Date.now() - (picTried.get(id) || 0) < 8000) continue; picTried.set(id, Date.now());
+    const b = await picBlob(id);
+    if (b) { picUrls.set(id, URL.createObjectURL(b)); document.querySelectorAll(`[data-picwait="${id}"]`).forEach(x => x.closest('.pic').innerHTML = `<img src="${picUrls.get(id)}" data-pic="${id}" alt="picture">`); }
+    else el.textContent = '🖼 Picture not here yet — it appears once the other device has synced. 图片还没同步过来'; }
+}
+new MutationObserver(() => hydratePics()).observe($('#timeline'), { childList: true, subtree: true });
+setInterval(hydratePics, 8000);
+function openPic(id) { const u = id && picUrls.get(id); if (!u) return; $('#picBig').src = u; $('#picDlg').showModal(); }
+$('#timeline').addEventListener('click', e => { const im = e.target.closest('img[data-pic]'); if (im) openPic(im.dataset.pic); });
+setTimeout(retryPicUploads, 3000);
+
 function msgHTML(m) {
   const toLang = m.lang === 'zh' ? 'en' : 'zh';
   let tr;
@@ -943,9 +1022,10 @@ function msgHTML(m) {
   const edited = m.edited ? `<span class="edited" title="Original 原文: ${esc(m.history?.[0]?.text || '')}">✏️ edited 已修改</span>` : '';
   const body = editingId === m.id
     ? `<div class="edit-box"><textarea class="edit-ta" rows="3">${esc(m.text)}</textarea><div class="edit-acts"><span class="muted-s">Enter = save · Esc = cancel</span><button type="button" data-act="editCancel">Cancel 取消</button><button type="button" class="primary" data-act="editSave">Save 保存</button></div></div>`
-    : `<div class="orig">${marksHTML(m)}</div>${notesList(m)}`;
-  return `<div class="msg ${m.speaker}${isRight(m.speaker) ? ' right' : ''}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
-  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${m.lang === 'zh' ? '中文' : 'EN'}</span>${viaTag(m)}${edited}</div>
+    : (m.img ? picHTML(m) : '') + (m.text ? `<div class="orig">${marksHTML(m)}</div>` : '') + notesList(m);
+  if (!m.text && m.img) tr = ''; // a picture without words: nothing to translate
+  const html = `<div class="msg ${m.speaker}${isRight(m.speaker) ? ' right' : ''}" data-id="${m.id}"><div class="avatar cat" title="${esc(nameOf(m.speaker))}"><img src="img/face-${m.speaker === 'A' ? 'a' : 'b'}.png" alt="${esc(nameOf(m.speaker).slice(0, 1).toUpperCase())}"></div>
+  <div class="bubble"><div class="meta"><b>${esc(nameOf(m.speaker))}</b><span title="${esc(timeTip(m.ts, m.speaker))}">${esc(timeLabel(m.ts, m.speaker))}</span><span>${!m.text && m.img ? '🖼' : m.lang === 'zh' ? '中文' : 'EN'}</span>${viaTag(m)}${edited}</div>
   ${body}${tr}${fix}${note}
   <div class="acts">
     <button class="icon" data-act="edit" title="Edit / fix typos 修改（改错字）">✏️ Edit</button>
@@ -959,6 +1039,8 @@ function msgHTML(m) {
     <button class="icon" data-act="copy" title="Copy">📋</button>
     <button class="icon" data-act="del" title="Delete">🗑</button>
   </div></div></div>`;
+  return m.text ? html : html.replace(/<div class="acts">[\s\S]*$/, `<div class="acts"><button class="icon" data-act="pic" title="Open">⤢ Open 查看</button>
+    <button class="icon" data-act="swap" title="Sent as the wrong person? 身份发错了？">⇄ ${esc(nameOf(m.speaker === 'A' ? 'B' : 'A'))}</button><button class="icon" data-act="del" title="Delete">🗑</button></div></div></div>`);
 }
 function renderComposer() {
   if (ME) S.speaker = ME;
@@ -997,7 +1079,13 @@ async function translateMsg(m) {
   m.tr = S.settings.engine === 'off' ? '' : out; save(); rerenderMsg(m); renderHeader();
 }
 function send() {
-  const text = $('#draft').value.trim(); if (!text) return;
+  const text = $('#draft').value.trim(); if (!text && !pendingPics.length) return;
+  const pics = pendingPics.splice(0); renderAttach();
+  pics.forEach((p, i) => { const last = i === pics.length - 1;
+    const pm = { id: uid(), ts: Date.now() + i, speaker: S.speaker, text: last ? text : '', lang: last && isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME }, img: { id: p.id, w: p.w, h: p.h } };
+    if (!pm.text) pm.tr = '';
+    picUrls.set(p.id, p.url); conv().messages.push(pm); uploadPic(p.id, p.blob); if (last && text) translateMsg(pm); });
+  if (pics.length) { $('#draft').value = ''; autoGrow(); save(); ghSoon(300); renderTimeline(); renderSide(); renderHeader(); $('#draft').focus(); return; }
   const m = { id: uid(), ts: Date.now(), speaker: S.speaker, text, lang: isZh(text) ? 'zh' : 'en', via: { d: DEV, n: DEV_NAME } };
   conv().messages.push(m);
   $('#draft').value = ''; autoGrow(); closePreview();
@@ -1044,6 +1132,7 @@ async function onMsgAction(act, m, el) {
   const enText = m.lang === 'en' ? m.text : m.tr;
   const zhText = m.lang === 'zh' ? m.text : m.tr;
   switch (act) {
+    case 'pic': openPic(m.img && m.img.id); break;
     case 'swap': {
       const to = m.speaker === 'A' ? 'B' : 'A';
       if (!confirm(`Move this message to ${nameOf(to)}? (It was sent as ${nameOf(m.speaker)}.)\n把这条消息改成 ${nameOf(to)} 发的？`)) break;
@@ -1188,7 +1277,7 @@ $('#exportMd').onclick = () => {
   const c = conv(); let md = `# ${convTitle(c).en}\n\n`; let last = '';
   for (const m of c.messages) { const d = dayLabel(m.ts); if (d !== last) { md += `\n## ${d}\n\n`; last = d; }
     const mk = (m.marks || []).map(k => `> ${{ u: '__', red: '✗', hl: '🖍', good: '👍', note: '💬' }[k.type]} “${m.text.slice(k.start, k.end)}”${k.fix ? ' → ' + k.fix : ''}${k.note ? ': ' + k.note : ''}  \n`).join('');
-    md += `**${nameOf(m.speaker)}** _${timeLabel(m.ts, m.speaker)}_${m.edited ? ' (edited)' : ''}  \n${m.text}  \n` + (m.tr ? `> ${m.tr}  \n` : '') + mk + (m.fix ? `> ✔ Better: ${m.fix}  \n` : '') + (m.note ? `> 💬 ${m.note}  \n` : '') + '\n'; }
+    md += `**${nameOf(m.speaker)}** _${timeLabel(m.ts, m.speaker)}_${m.edited ? ' (edited)' : ''}  \n${m.img ? '🖼 [picture]  \n' : ''}${m.text}  \n` + (m.tr ? `> ${m.tr}  \n` : '') + mk + (m.fix ? `> ✔ Better: ${m.fix}  \n` : '') + (m.note ? `> 💬 ${m.note}  \n` : '') + '\n'; }
   download(convTitle(c).en.replace(/[\\/:*?"<>|]/g, '-') + '.md', md, 'text/markdown');
 };
 $('#exportJson').onclick = () => download('bilingual-board-backup-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(S, null, 1), 'application/json');

@@ -62,6 +62,15 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(204); return res.end();
       }
     }
+    const pic = url.pathname.match(/^\/api\/img\/([a-z0-9]{6,24})$/); // pictures sent in the chat, kept in data/img
+    if (pic) {
+      const file = path.join(path.dirname(dataFile), 'img', pic[1] + '.jpg');
+      if (req.method === 'PUT') { const chunks = []; let size = 0; for await (const c of req) { size += c.length; if (size > 8 * 1024 * 1024) { res.writeHead(413); return res.end(); } chunks.push(c); }
+        await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, Buffer.concat(chunks)); res.writeHead(204); return res.end(); }
+      const buf = await fs.readFile(file).catch(() => null);
+      if (!buf) { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'max-age=31536000, immutable' }); return res.end(buf);
+    }
     if (url.pathname === '/api/local/check' && req.method === 'POST') { // free model on this PC (local.mjs)
       const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
       try {
