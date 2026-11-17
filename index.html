@@ -557,14 +557,16 @@ function togglePin(id) { const ids = pinnedIds(); const c = S.conversations.find
 let convDrag = null, dragJustEnded = false;
 $('#sideList').addEventListener('pointerdown', e => {
   const el = e.target.closest('.conv'); if (!el || e.target.closest('button') || e.button > 0) return;
-  convDrag = { id: el.dataset.id, el, x: e.clientX, y: e.clientY, pid: e.pointerId, touch: e.pointerType !== 'mouse', on: false, before: null };
+  const convs = [...document.querySelectorAll('#sideList .conv')], i = convs.indexOf(el);
+  convDrag = { id: el.dataset.id, el, x: e.clientX, y: e.clientY, pid: e.pointerId, touch: e.pointerType !== 'mouse', on: false, before: null,
+    next: convs[i + 1] ? convs[i + 1].dataset.id : null, maxDy: 0 }; // where it started: dropping it there again changes nothing
   if (convDrag.touch) convDrag.timer = setTimeout(() => convDrag && startDrag(), 400);
 });
 function startDrag() { convDrag.on = true; convDrag.el.classList.add('dragging'); $('#sideList').classList.add('dragmode'); try { convDrag.el.setPointerCapture(convDrag.pid); } catch {} navigator.vibrate?.(15); }
 $('#sideList').addEventListener('pointermove', e => {
   if (!convDrag) return; const dx = e.clientX - convDrag.x, dy = e.clientY - convDrag.y, far = Math.hypot(dx, dy);
-  if (!convDrag.on) { if (convDrag.touch) { if (far > 10) { clearTimeout(convDrag.timer); convDrag = null; } return; } if (far < 6) return; startDrag(); }
-  e.preventDefault(); convDrag.el.style.transform = `translateY(${dy}px)`;
+  if (!convDrag.on) { if (convDrag.touch) { if (far > 10) { clearTimeout(convDrag.timer); convDrag = null; } return; } if (Math.abs(dy) < 12) return; startDrag(); }
+  e.preventDefault(); convDrag.el.style.transform = `translateY(${dy}px)`; convDrag.maxDy = Math.max(convDrag.maxDy, Math.abs(dy));
   const items = [...document.querySelectorAll('#sideList .conv')].filter(x => x !== convDrag.el);
   items.forEach(x => x.classList.remove('drop-before')); $('#sideList').classList.remove('drop-end');
   const t = items.find(x => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
@@ -574,14 +576,18 @@ $('#sideList').addEventListener('pointermove', e => {
 $('#sideList').addEventListener('touchmove', e => { if (convDrag && convDrag.on) e.preventDefault(); }, { passive: false });
 function endDrag(cancel) {
   if (!convDrag) return; clearTimeout(convDrag.timer); const d = convDrag; convDrag = null;
-  if (!d.on) return; dragJustEnded = true; setTimeout(() => dragJustEnded = false, 50);
+  if (!d.on) return;
+  if (d.maxDy >= 25) { dragJustEnded = true; setTimeout(() => dragJustEnded = false, 50); }
   document.querySelectorAll('#sideList .drop-before').forEach(x => x.classList.remove('drop-before')); $('#sideList').classList.remove('drop-end', 'dragmode');
   d.el.classList.remove('dragging'); d.el.style.transform = '';
-  if (cancel) return;
+  if (cancel || d.maxDy < 25 || d.before === d.next) return; // a click, a wobble, or put back where it was: nothing changes
   const ids = pinnedIds().filter(x => x !== d.id), before = d.before && S.conversations.find(c => c.id === d.before);
+  const me = S.conversations.find(c => c.id === d.id), wasPinned = isPinned(me);
   const firstUnpinned = sortedConvs().filter(c => c.id !== d.id).find(c => !isPinned(c));
-  if (before && isPinned(before)) { ids.splice(ids.indexOf(before.id), 0, d.id); setPins(ids); toast('📌 Order saved 已调整顺序'); }
-  else if (before && (before === firstUnpinned)) { setPins([...ids, d.id]); toast('📌 Pinned 已置顶'); }
+  if (before && isPinned(before)) { ids.splice(ids.indexOf(before.id), 0, d.id); setPins(ids); toast(wasPinned ? '📌 Order saved 已调整顺序' : '📌 Pinned 已置顶'); }
+  else if (before && before === firstUnpinned) { // moved up to the line between pinned and recent: end of the pinned group
+    setPins([...ids, d.id]); toast(wasPinned ? '📌 Order saved 已调整顺序' : '📌 Pinned 已置顶'); }
+  else if (!wasPinned) { toast('Recent chats sort by time — drag to the top to pin 最近的对话按时间排序，拖到最上面才会置顶'); }
   else { const was = pinnedIds().includes(d.id); setPins(ids); toast(was ? 'Unpinned — recent chats sort by time 已取消置顶（最近的对话按时间排序）' : 'Only pinned chats can be moved — drop it at the top 只有置顶的对话能调顺序，拖到最上面'); }
 }
 $('#sideList').addEventListener('pointerup', () => endDrag(false));
