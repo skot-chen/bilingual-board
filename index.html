@@ -2138,7 +2138,7 @@ $('#newVerLater').onclick = () => { $('#newVer').hidden = true; };
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNewVersion(); });
 addEventListener('pageshow', e => { if (e.persisted) checkNewVersion(true); }); // phone brings back a page kept in memory
 addEventListener('online', () => checkNewVersion(true));
-setInterval(() => { if (document.visibilityState === 'visible') checkNewVersion(true); }, 30 * 60e3);
+setInterval(() => { if (document.visibilityState === 'visible') checkNewVersion(true); }, 5 * 60e3); // the app is often left open
 setTimeout(() => checkNewVersion(true), 3000);
 function fillMeMenu() {
   const n = k => esc(nameOf(k));
