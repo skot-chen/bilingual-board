@@ -2068,11 +2068,17 @@ async function checkNewVersion(force) {
   try { const r = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' }); const lm = Date.parse(r.headers.get('last-modified') || '');
     if (r.ok && lm && lm - PAGE_DATE > 2000) $('#newVer').hidden = false; } catch {}
 }
-$('#newVerGo').onclick = () => location.reload();
+// Update: first fetch fresh copies past the browser cache (GitHub Pages lets phones keep a page 10 minutes),
+// otherwise the reload could show the old version again.
+$('#newVerGo').onclick = async () => { $('#newVerGo').disabled = true;
+  try { await Promise.all([location.pathname, 'merge.cjs?v=2', 'manifest.json'].map(u => fetch(u, { cache: 'reload' }))); } catch {}
+  location.reload(); };
 $('#newVerLater').onclick = () => { $('#newVer').hidden = true; };
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNewVersion(); });
+addEventListener('pageshow', e => { if (e.persisted) checkNewVersion(true); }); // phone brings back a page kept in memory
+addEventListener('online', () => checkNewVersion(true));
 setInterval(() => { if (document.visibilityState === 'visible') checkNewVersion(true); }, 30 * 60e3);
-setTimeout(() => checkNewVersion(true), 8000);
+setTimeout(() => checkNewVersion(true), 3000);
 function fillMeMenu() {
   const n = k => esc(nameOf(k));
   $('#sMe').innerHTML = `<option value="">Shared computer — both people · 两人共用一台（可切换说话人）</option>
