@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- two chat bubbles: 中 (Chinese speaker, teal) and A (English speaker, orange) -->
+  <path d="M6 4h30a6 6 0 0 1 6 6v18a6 6 0 0 1-6 6H18l-9 8v-8H6a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6z" fill="#0f766e"/>
+  <text x="21" y="27.5" font-family="'Microsoft YaHei','PingFang SC','Noto Sans SC',sans-serif" font-size="22" font-weight="700" fill="#fff" text-anchor="middle">中</text>
+  <path d="M58 24H30a6 6 0 0 0-6 6v18a6 6 0 0 0 6 6h17l9 8v-8h2a6 6 0 0 0 6-6V30a6 6 0 0 0-6-6z" fill="#d97706" stroke="#fff" stroke-width="2.5"/>
+  <text x="44" y="47.5" font-family="'Segoe UI',Arial,sans-serif" font-size="22" font-weight="800" fill="#fff" text-anchor="middle">A</text>
+</svg>
